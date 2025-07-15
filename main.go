@@ -59,9 +59,11 @@ func parseInfo(doc *html.Node) map[string]string {
 }
 
 func main() {
-	url := "https://t.me/nft/BowTie-5443"
-	doc, err := fetchHTML(url)
+	var url string
+	fmt.Print("Enter the gift url: ")
+	fmt.Scan(&url)
 
+	doc, err := fetchHTML(url)
 	if err != nil {
 		log.Fatalf("Error: %v", err)
 	}
