@@ -79,7 +79,7 @@ func parseGiftInfo(doc *html.Node) map[string]string {
 
 func main() {
 	var url string
-	fmt.Print("Enter the gift url: ")
+	fmt.Print("~> Enter the gift url: ")
 	fmt.Scan(&url)
 
 	doc, err := fetchHTML(url)
@@ -88,13 +88,15 @@ func main() {
 	}
 
 	info := parseGiftInfo(doc)
-	for key, value := range info {
+	keys := []string{"Owner", "Quantity", "Model", "Backdrop", "Symbol"}
+
+	for _, key := range keys {
 		if key == "Quantity" {
-			cleaned := strings.Split(value, `/`)
+			cleaned := strings.Split(info[key], `/`)
 			num, _ := strconv.Atoi(strings.ReplaceAll(strings.ReplaceAll(cleaned[0], "\u00A0", ""), " ", ""))
 			fmt.Printf("%s: %v\n", key, num)
 		} else {
-			fmt.Printf("%s: %s\n", key, value)
+			fmt.Printf("%s: %s\n", key, info[key])
 		}
 	}
 }
