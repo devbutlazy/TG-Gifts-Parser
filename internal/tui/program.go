@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type state int
@@ -14,6 +15,14 @@ const (
 	selectingKey state = iota
 	selectingValue
 	viewSize = 10
+)
+
+var (
+	cursorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	selectedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("229")).Bold(true)
+	headerStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Bold(true).Underline(true)
+	boxStyle       = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1, 2).BorderForeground(lipgloss.Color("240"))
+	highlightStyle = lipgloss.NewStyle().Background(lipgloss.Color("57")).Foreground(lipgloss.Color("230"))
 )
 
 type Model struct {
@@ -28,22 +37,16 @@ type Model struct {
 }
 
 func InitialModel() Model {
-	data, err := LoadData("data/gifts.json")
+	data, keys, err := LoadData("data/gifts.json")
 	if err != nil {
 		fmt.Println("Error loading gifts.json:", err)
 		os.Exit(1)
 	}
 
-	keys := make([]string, 0, len(data))
-	for k := range data {
-		keys = append(keys, k)
-	}
-
 	return Model{
-		data:   data,
-		keys:   keys,
-		state:  selectingKey,
-		cursor: 0,
+		data:  data,
+		keys:  keys, // now ordered!
+		state: selectingKey,
 	}
 }
 
@@ -100,40 +103,56 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	var b strings.Builder
+	var items []string
+	var header string
 
 	start := m.viewOffset
 	end := start + viewSize
-	if m.state == selectingKey && end > len(m.keys) {
-		end = len(m.keys)
-	}
-	if m.state == selectingValue && end > len(m.values) {
-		end = len(m.values)
-	}
 
-	items := m.keys
-	if m.state == selectingValue {
-		items = m.values
-	}
-
-	header := "Select a key (use ↑/↓ and Enter):\n\n"
-	if m.state == selectingValue {
-		header = fmt.Sprintf("Key: %s\nSelect a value (use ↑/↓ and Enter, Backspace to go back):\n\n", m.SelectedKey)
-	}
-	b.WriteString(header)
-
-	for i := start; i < end; i++ {
-		cursor := " "
-		if i == m.cursor {
-			cursor = ">"
+	if m.state == selectingKey {
+		items = m.keys
+		if end > len(items) {
+			end = len(items)
 		}
-		fmt.Fprintf(&b, "%s %s\n", cursor, items[i])
+		header = headerStyle.Render("🎁 Select a Gift (↑/↓ and Enter):")
+	} else {
+		items = m.values
+		if end > len(items) {
+			end = len(items)
+		}
+		header = fmt.Sprintf(
+			"%s\n%s",
+			headerStyle.Render(fmt.Sprintf("🎁 %s", m.SelectedKey)),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Render("📦 Select a Model (↑/↓ and Enter, ⌫ to go back):"),
+		)
 	}
 
+	// Build list of items
+	var itemLines []string
+	for i := start; i < end; i++ {
+		cursor := "  "
+		if i == m.cursor {
+			cursor = cursorStyle.Render("→")
+			itemLines = append(itemLines, highlightStyle.Render(fmt.Sprintf("%s %s", cursor, items[i])))
+		} else {
+			itemLines = append(itemLines, fmt.Sprintf("  %s", selectedStyle.Render(items[i])))
+		}
+	}
+
+	// Combine header and items into a single box
+	content := header + "\n\n" + strings.Join(itemLines, "\n")
+	box := boxStyle.Render(content)
+
+	// Final render
+	var b strings.Builder
+	b.WriteString(box)
+
+	// Selected value
 	if m.SelectedValue != "" {
-		fmt.Fprintf(&b, "\nYou selected: %s -> %s\n", m.SelectedKey, m.SelectedValue)
+		b.WriteString("\n\n")
+		b.WriteString(selectedStyle.Render(fmt.Sprintf("✅ You selected: %s → %s", m.SelectedKey, m.SelectedValue)))
 	}
-	b.WriteString("\nPress q to quit.\n")
 
+	b.WriteString("\n\nPress q to quit.\n")
 	return b.String()
 }
