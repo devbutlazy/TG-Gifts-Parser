@@ -37,6 +37,22 @@ func LoadData(path string) (map[string][]string, []string, error) {
 	return data, keys, nil
 }
 
+func LoadBackdrops(path string) []string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Println("Error loading base.json:", err)
+		os.Exit(1)
+	}
+	var parsed struct {
+		Backdrops []string `json:"backdrops"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		fmt.Println("Failed to parse base.json:", err)
+		os.Exit(1)
+	}
+	return parsed.Backdrops
+}
+
 func ClearScreen() {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
