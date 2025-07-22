@@ -16,17 +16,3 @@ func main() {
 		fmt.Println("TUI exited with error:", err)
 	}
 }
-
-// package main
-
-// import (
-// 	"log"
-
-// 	"tg-gifts-parser/internal/parser"
-// )
-
-// func main() {
-// 	if err := parser.ParseAllGifts(); err != nil {
-// 		log.Fatalf("Error: %v", err)
-// 	}
-// }
