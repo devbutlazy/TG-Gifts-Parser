@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
-	"github.com/antchfx/htmlquery"
-	"golang.org/x/net/html"
 	"net/http"
 	"strconv"
-)
 
+	"github.com/antchfx/htmlquery"
+	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/net/html"
+)
 
 func FetchHTML(url string) (*html.Node, error) {
 	resp, err := http.Get(url)
@@ -201,7 +201,7 @@ func ParseAllGifts() error {
 
 	giftChan := make(chan GiftItem, 10000)
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, workerCount) 
+	sem := make(chan struct{}, workerCount)
 
 	dbDone := make(chan struct{})
 	go func() {
@@ -239,7 +239,7 @@ func ParseAllGifts() error {
 
 			go func(name, slug string, number int) {
 				defer wg.Done()
-				defer func() { <-sem }() 
+				defer func() { <-sem }()
 
 				giftURL := fmt.Sprintf("https://t.me/nft/%s-%d", slug, number)
 				doc, err := FetchHTML(giftURL)
