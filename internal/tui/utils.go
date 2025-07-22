@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"regexp"
 
 	json "github.com/goccy/go-json"
 	"github.com/iancoleman/orderedmap"
@@ -37,6 +38,7 @@ func LoadData(path string) (map[string][]string, []string, error) {
 	return data, keys, nil
 }
 
+
 func LoadBackdrops(path string) []string {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -67,4 +69,15 @@ func ClearScreen() {
 	if err := cmd.Run(); err != nil {
 		fmt.Println("Failed to clear screen:", err)
 	}
+}
+
+
+func RemovePercent(s string) string {
+	re := regexp.MustCompile(` ?\(?\d+(\.\d+)?%\)?`)
+	return re.ReplaceAllString(s, "")
+}
+
+func SanitizeGiftName(name string) string {
+	re := regexp.MustCompile(`[^\w]`)
+	return re.ReplaceAllString(name, "")
 }

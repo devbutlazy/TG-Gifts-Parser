@@ -29,7 +29,7 @@ func FetchHTML(url string, attempts int, delay time.Duration) (*html.Node, error
 	return nil, err
 }
 
-func extractGiftField(doc *html.Node, field string) string {
+func ExtractGiftField(doc *html.Node, field string) string {
 	td := htmlquery.FindOne(doc, fmt.Sprintf(`//th[contains(normalize-space(.), "%s")]/following-sibling::td`, field))
 	if td == nil {
 		return "Unknown"
@@ -70,7 +70,7 @@ func ParseGiftInfo(doc *html.Node) map[string]string {
 	}
 
 	for _, field := range []string{"Model", "Backdrop", "Symbol", "Quantity"} {
-		info[field] = extractGiftField(doc, field)
+		info[field] = ExtractGiftField(doc, field)
 	}
 
 	return info

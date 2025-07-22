@@ -27,7 +27,7 @@ type GiftItem struct {
 	Number   int
 }
 
-func extractQuantityFallback(doc *html.Node) string {
+func ExtractQuantityFallback(doc *html.Node) string {
 	text := htmlquery.InnerText(doc)
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
@@ -44,7 +44,7 @@ func extractQuantityFallback(doc *html.Node) string {
 	return "Unknown"
 }
 
-func sanitizeKey(key string) string {
+func SanitizeKey(key string) string {
 	var b strings.Builder
 	for _, r := range key {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
@@ -106,7 +106,7 @@ func InsertGift(db *sql.DB, name, model, backdrop, symbol string, number int) er
 func ParseAndSaveGift(key string, wg *sync.WaitGroup, sem chan struct{}) {
 	defer wg.Done()
 
-	keySlug := sanitizeKey(key)
+	keySlug := SanitizeKey(key)
 	dbPath := filepath.Join("database", keySlug+".db")
 
 	fmt.Printf("Starting parsing gift %q, db file: %s\n", key, dbPath)
@@ -125,9 +125,9 @@ func ParseAndSaveGift(key string, wg *sync.WaitGroup, sem chan struct{}) {
 		return
 	}
 
-	quantityStr := extractGiftField(doc, "Quantity")
+	quantityStr := ExtractGiftField(doc, "Quantity")
 	if quantityStr == "Unknown" {
-		quantityStr = extractQuantityFallback(doc)
+		quantityStr = ExtractQuantityFallback(doc)
 	}
 	quantity := CleanQuantity(quantityStr)
 	if quantity == 0 {

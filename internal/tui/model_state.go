@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"database/sql"
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type state int
@@ -103,10 +105,30 @@ func (m *Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.state = selectingBackdrop
 		case 3:
 			if m.SelectedKey != "" && m.SelectedValue != "" && m.SelectedBackdrop != "" {
-				return m, func() tea.Msg {
-					fmt.Printf("\n\n🚀 Starting with: %s → %s + %s\n\n", m.SelectedKey, m.SelectedValue, m.SelectedBackdrop)
-					return tea.Quit()
+				giftDB := "database/" + SanitizeGiftName(m.SelectedKey) + ".db"
+				modelName := RemovePercent(m.SelectedValue)
+				backdropName := RemovePercent(m.SelectedBackdrop)
+
+				entries, err := queryMatchingEntries(giftDB, modelName, backdropName)
+				if err != nil {
+					fmt.Println("Error:", err)
+					return m, tea.Quit
 				}
+
+				title := fmt.Sprintf("🚀 Starting with: %s → %s + %s", m.SelectedKey, m.SelectedValue, m.SelectedBackdrop)
+				fmt.Println(headerStyle.Render(title))
+
+				if len(entries) == 0 {
+					msg := fmt.Sprintf("Sorry, no matches found for: %s + %s", m.SelectedValue, m.SelectedBackdrop)
+					fmt.Println(errorStyle.Render(msg))
+				} else {
+					fmt.Println(headerStyle.Render("Matching NFT links:"))
+					for i, entry := range entries {
+						url := fmt.Sprintf("https://t.me/nft/%s-%d", SanitizeGiftName(m.SelectedKey), entry)
+						fmt.Printf("%2d. %s\n", i+1, linkStyle.Render(url))
+					}
+				}
+				return m, tea.Quit
 			}
 		}
 	case selectingGift:
@@ -133,4 +155,34 @@ func (m *Model) handleBackspace() {
 		m.state = mainMenu
 	}
 	m.cursor, m.viewOffset = 0, 0
+}
+
+func queryMatchingEntries(dbPath, model, backdrop string) ([]int, error) {
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.Query("SELECT number, model, backdrop FROM gifts")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var matches []int
+	for rows.Next() {
+		var number int
+		var dbModel, dbBackdrop string
+		err := rows.Scan(&number, &dbModel, &dbBackdrop)
+		if err != nil {
+			return nil, err
+		}
+
+		if RemovePercent(dbModel) == model && RemovePercent(dbBackdrop) == backdrop {
+			matches = append(matches, number)
+		}
+	}
+
+	return matches, nil
 }
