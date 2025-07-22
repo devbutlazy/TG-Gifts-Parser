@@ -5,23 +5,28 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/antchfx/htmlquery"
 	"golang.org/x/net/html"
 )
 
-func FetchHTML(url string) (*html.Node, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch URL: %w", err)
+func FetchHTML(url string, attempts int, delay time.Duration) (*html.Node, error) {
+	var err error
+	for i := 0; i < attempts; i++ {
+		resp, err := http.Get(url)
+		if err == nil {
+			defer resp.Body.Close()
+			doc, parseErr := htmlquery.Parse(resp.Body)
+			if parseErr == nil {
+				return doc, nil
+			}
+			err = fmt.Errorf("failed to parse HTML: %w", parseErr)
+		}
+		fmt.Printf("Fetch failed for %s (attempt %d/%d): %v\n", url, i+1, attempts, err)
+		time.Sleep(delay)
 	}
-	defer resp.Body.Close()
-
-	doc, err := htmlquery.Parse(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse HTML: %w", err)
-	}
-	return doc, nil
+	return nil, err
 }
 
 func extractGiftField(doc *html.Node, field string) string {

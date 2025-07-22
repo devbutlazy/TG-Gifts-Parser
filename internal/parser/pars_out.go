@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -107,7 +108,7 @@ func ParseAndSaveGift(key string, wg *sync.WaitGroup, sem chan struct{}) {
 	defer db.Close()
 
 	url := fmt.Sprintf("https://t.me/nft/%s-1", keySlug)
-	doc, err := FetchHTML(url)
+	doc, err := FetchHTML(url, 3, 2*time.Second)
 	if err != nil {
 		fmt.Printf("Failed to fetch first page for %q: %v\n", key, err)
 		return
@@ -127,7 +128,7 @@ func ParseAndSaveGift(key string, wg *sync.WaitGroup, sem chan struct{}) {
 
 	for i := 1; i <= quantity; i++ {
 		giftURL := fmt.Sprintf("https://t.me/nft/%s-%d", keySlug, i)
-		doc, err := FetchHTML(giftURL)
+		doc, err := FetchHTML(giftURL, 3, 2*time.Second)
 		if err != nil {
 			fmt.Printf("Warning: failed to fetch %s: %v\n", giftURL, err)
 			continue
