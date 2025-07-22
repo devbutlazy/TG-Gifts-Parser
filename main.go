@@ -24,8 +24,8 @@ import (
 
 	"tg-gifts-parser/internal/parser"
 )
- 
-func main() {go 
+
+func main() {
 	if err := parser.ParseAllGifts(); err != nil {
 		log.Fatalf("Error: %v", err)
 	}
