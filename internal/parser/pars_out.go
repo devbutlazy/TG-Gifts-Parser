@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
+	"unicode"
 
 	"github.com/antchfx/htmlquery"
 	_ "github.com/mattn/go-sqlite3"
@@ -41,6 +42,16 @@ func extractQuantityFallback(doc *html.Node) string {
 		}
 	}
 	return "Unknown"
+}
+
+func sanitizeKey(key string) string {
+	var b strings.Builder
+	for _, r := range key {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func LoadGiftsJSON(path string) ([]string, error) {
@@ -95,7 +106,7 @@ func InsertGift(db *sql.DB, name, model, backdrop, symbol string, number int) er
 func ParseAndSaveGift(key string, wg *sync.WaitGroup, sem chan struct{}) {
 	defer wg.Done()
 
-	keySlug := strings.ReplaceAll(key, " ", "")
+	keySlug := sanitizeKey(key)
 	dbPath := filepath.Join("database", keySlug+".db")
 
 	fmt.Printf("Starting parsing gift %q, db file: %s\n", key, dbPath)
