@@ -155,4 +155,3 @@ func (m Model) viewBackdropSelection() string {
 	header := headerStyle.Render("🖼️ Select a Backdrop (↑/↓ and Enter, ⌫ to go back):")
 	return renderSelectionList(m.cursor, m.viewOffset, m.backdrops, header)
 }
-

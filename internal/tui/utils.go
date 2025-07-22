@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
 	"regexp"
+	"runtime"
 
 	json "github.com/goccy/go-json"
 	"github.com/iancoleman/orderedmap"
@@ -38,7 +38,6 @@ func LoadData(path string) (map[string][]string, []string, error) {
 	return data, keys, nil
 }
 
-
 func LoadBackdrops(path string) []string {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -70,7 +69,6 @@ func ClearScreen() {
 		fmt.Println("Failed to clear screen:", err)
 	}
 }
-
 
 func RemovePercent(s string) string {
 	re := regexp.MustCompile(` ?\(?\d+(\.\d+)?%\)?`)
