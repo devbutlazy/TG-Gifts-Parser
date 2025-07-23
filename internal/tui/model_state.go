@@ -2,9 +2,12 @@ package tui
 
 import (
 	"database/sql"
-	"fmt"
+	"math"
+	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -15,9 +18,16 @@ const (
 	selectingGift
 	selectingModel
 	selectingBackdrop
-
+	loadingResults
+	viewingResults
 	viewSize = 10
 )
+
+type loadingMsg struct{}
+type resultsMsg struct {
+	entries []int
+	err     error
+}
 
 func (m Model) Init() tea.Cmd {
 	return nil
@@ -39,13 +49,59 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			m.moveCursorDown()
 
+		case "left", "h":
+			if m.state == viewingResults && m.page > 0 {
+				m.page--
+				m.cursor = 0 // Reset cursor to top of the options
+			}
+
+		case "right", "l":
+			if m.state == viewingResults && m.page < m.totalPages-1 {
+				m.page++
+				m.cursor = 0 // Reset cursor to top of the options
+			}
+
 		case "enter":
-			return m.handleEnter()
+			if m.state == viewingResults {
+				if m.cursor == 0 {
+					m.state = mainMenu
+					m.cursor, m.viewOffset, m.page = 0, 0, 0
+					return m, nil
+				} else if m.cursor == 1 {
+					return m, tea.Quit
+				}
+			} else {
+				return m.handleEnter()
+			}
 
 		case "backspace":
-			m.handleBackspace()
+			if m.state != viewingResults {
+				m.handleBackspace()
+			}
+		}
+
+	case loadingMsg:
+		if m.state == loadingResults {
+			return m, m.spinner.Tick
+		}
+
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+
+	case resultsMsg:
+		if m.state == loadingResults {
+			m.results = msg.entries
+			m.error = msg.err
+			m.state = viewingResults
+			m.cursor = 0
+			m.viewOffset = 0
+			m.page = 0
+			m.totalPages = int(math.Ceil(float64(len(m.results)) / float64(viewSize)))
 		}
 	}
+
 	return m, nil
 }
 
@@ -56,6 +112,10 @@ func (m *Model) moveCursorUp() {
 			m.cursor = 0
 		case 3:
 			m.cursor = 1 // skip <<symbols>>
+		}
+	} else if m.state == viewingResults {
+		if m.cursor > 0 {
+			m.cursor--
 		}
 	} else if m.cursor > 0 {
 		m.cursor--
@@ -76,6 +136,8 @@ func (m *Model) moveCursorDown() {
 		length = len(m.values)
 	case selectingBackdrop:
 		length = len(m.backdrops)
+	case viewingResults:
+		length = 2 // Only Try Again, Exit
 	}
 
 	if m.state == mainMenu {
@@ -89,7 +151,7 @@ func (m *Model) moveCursorDown() {
 		}
 	} else if m.cursor < length-1 {
 		m.cursor++
-		if m.cursor >= m.viewOffset+viewSize {
+		if m.state != viewingResults && m.cursor >= m.viewOffset+viewSize {
 			m.viewOffset++
 		}
 	}
@@ -105,30 +167,20 @@ func (m *Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.state = selectingBackdrop
 		case 3:
 			if m.SelectedKey != "" && m.SelectedValue != "" && m.SelectedBackdrop != "" {
-				giftDB := "database/" + SanitizeGiftName(m.SelectedKey) + ".db"
-				modelName := RemovePercent(m.SelectedValue)
-				backdropName := RemovePercent(m.SelectedBackdrop)
-
-				entries, err := queryMatchingEntries(giftDB, modelName, backdropName)
-				if err != nil {
-					fmt.Println("Error:", err)
-					return m, tea.Quit
-				}
-
-				title := fmt.Sprintf("🚀 Starting with: %s → %s + %s", m.SelectedKey, m.SelectedValue, m.SelectedBackdrop)
-				fmt.Println(headerStyle.Render(title))
-
-				if len(entries) == 0 {
-					msg := fmt.Sprintf("Sorry, no matches found for: %s + %s", m.SelectedValue, m.SelectedBackdrop)
-					fmt.Println(errorStyle.Render(msg))
-				} else {
-					fmt.Println(headerStyle.Render("Matching NFT links:"))
-					for i, entry := range entries {
-						url := fmt.Sprintf("https://t.me/nft/%s-%d", SanitizeGiftName(m.SelectedKey), entry)
-						fmt.Printf("%2d. %s\n", i+1, linkStyle.Render(url))
-					}
-				}
-				return m, tea.Quit
+				m.state = loadingResults
+				m.spinner = spinner.New()
+				m.spinner.Spinner = spinner.Dot
+				m.spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+				return m, tea.Batch(
+					m.spinner.Tick,
+					tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+						giftDB := "database/" + SanitizeGiftName(m.SelectedKey) + ".db"
+						modelName := RemovePercent(m.SelectedValue)
+						backdropName := RemovePercent(m.SelectedBackdrop)
+						entries, err := queryMatchingEntries(giftDB, modelName, backdropName)
+						return resultsMsg{entries, err}
+					}),
+				)
 			}
 		}
 	case selectingGift:

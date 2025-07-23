@@ -3,6 +3,8 @@ package tui
 import (
 	"fmt"
 	"os"
+
+	"github.com/charmbracelet/bubbles/spinner"
 )
 
 type Model struct {
@@ -14,6 +16,8 @@ type Model struct {
 	cursor     int
 	viewOffset int
 	state      state
+	page       int
+	totalPages int
 
 	SelectedKey      string
 	SelectedValue    string
@@ -21,6 +25,10 @@ type Model struct {
 
 	width  int
 	height int
+
+	spinner spinner.Model
+	results []int
+	error   error
 }
 
 func InitialModel() Model {

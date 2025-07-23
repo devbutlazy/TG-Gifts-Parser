@@ -9,6 +9,8 @@ import (
 
 func (m Model) View() string {
 	var content string
+	var showFooter bool = true
+
 	switch m.state {
 	case mainMenu:
 		content = m.viewMainMenu()
@@ -16,14 +18,25 @@ func (m Model) View() string {
 		content = m.viewGiftSelection()
 	case selectingBackdrop:
 		content = m.viewBackdropSelection()
+	case loadingResults:
+		content = m.viewLoading()
+		showFooter = false
+	case viewingResults:
+		content = m.viewResults()
 	default:
 		content = "Unknown state"
 	}
 
 	centered := centerContent(m, content)
-	footer := footerView(m, "Press q to quit. Use ↑/↓ and Enter to navigate.")
-
-	return centered + "\n\n" + footer
+	if showFooter {
+		footerText := "Press q to quit. Use ↑/↓ and Enter to navigate."
+		if m.state == viewingResults {
+			footerText = fmt.Sprintf("Page %d/%d: Use ←/→ and ↑/↓", m.page+1, m.totalPages)
+		}
+		footer := footerView(m, footerText)
+		return centered + "\n\n" + footer
+	}
+	return centered
 }
 
 func centerContent(m Model, content string) string {
@@ -154,4 +167,54 @@ func (m Model) viewGiftSelection() string {
 func (m Model) viewBackdropSelection() string {
 	header := headerStyle.Render("🖼️ Select a Backdrop (↑/↓ and Enter, ⌫ to go back):")
 	return renderSelectionList(m.cursor, m.viewOffset, m.backdrops, header)
+}
+
+func (m Model) viewLoading() string {
+	header := headerStyle.Render(fmt.Sprintf("🔍 Searching for: %s → %s + %s", m.SelectedKey, m.SelectedValue, m.SelectedBackdrop))
+	content := fmt.Sprintf("%s\n\n%s Loading...", header, m.spinner.View())
+	newBoxStyle := boxStyle
+	newBoxStyle = newBoxStyle.BorderForeground(lipgloss.Color("205"))
+	return newBoxStyle.Render(content)
+}
+
+func (m Model) viewResults() string {
+	header := headerStyle.Render(fmt.Sprintf("🎉 Results for: %s → %s + %s (Page %d/%d)", m.SelectedKey, m.SelectedValue, m.SelectedBackdrop, m.page+1, m.totalPages))
+	var content string
+
+	if m.error != nil {
+		content = errorStyle.Render(fmt.Sprintf("Error: %v", m.error))
+	} else if len(m.results) == 0 {
+		content = errorStyle.Render(fmt.Sprintf("No matches found for: %s + %s", m.SelectedValue, m.SelectedBackdrop))
+	} else {
+		start := m.page * viewSize
+		end := start + viewSize
+		if end > len(m.results) {
+			end = len(m.results)
+		}
+
+		var links []string
+		for i, entry := range m.results[start:end] {
+			url := fmt.Sprintf("https://t.me/nft/%s-%d", SanitizeGiftName(m.SelectedKey), entry)
+			clickableLink := fmt.Sprintf("%d. %s", start+i+1, url)
+			links = append(links, clickableLink)
+		}
+
+		content = header + "\n\n" + strings.Join(links, "\n")
+	}
+
+	options := []string{"Try Again", "Exit"}
+	var optionLines []string
+	for i, opt := range options {
+		if m.cursor == i {
+			prefix := cursorStyle.Render(">")
+			optionLines = append(optionLines, highlightStyle.Render(fmt.Sprintf("%s %s", prefix, opt)))
+		} else {
+			optionLines = append(optionLines, fmt.Sprintf("  %s", selectedStyle.Render(opt)))
+		}
+	}
+
+	body := fmt.Sprintf("%s\n\n%s", content, strings.Join(optionLines, "\n"))
+	newBoxStyle := boxStyle
+	newBoxStyle = newBoxStyle.BorderForeground(lipgloss.Color("33")).Padding(1, 2)
+	return newBoxStyle.Render(body)
 }

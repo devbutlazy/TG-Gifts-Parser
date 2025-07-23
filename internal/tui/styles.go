@@ -27,10 +27,6 @@ var (
 	disabledStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("238"))
 
-	linkStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#00AEEF")).
-			Underline(true)
-
 	errorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FF5F5F")).
 			Bold(true)
