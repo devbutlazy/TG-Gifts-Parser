@@ -37,10 +37,10 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, m.height
+		m.width, m.height = msg.Width, msg.Height
 
 	case tea.KeyMsg:
-		// Handle search input first when search is active
+
 		if m.searchActive && (m.state == selectingGift || m.state == selectingModel || m.state == selectingBackdrop) {
 			switch msg.String() {
 			case "ctrl+f":
@@ -60,7 +60,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				return m.handleEnter()
 			default:
-				// Capture all printable characters
+
 				if len(msg.String()) == 1 && msg.String()[0] >= 32 && msg.String()[0] <= 126 {
 					m.searchQuery += msg.String()
 					m.filterLists()
@@ -70,7 +70,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Handle other key inputs
+
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
