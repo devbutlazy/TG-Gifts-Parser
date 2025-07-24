@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,12 +13,25 @@ import (
 	"time"
 
 	"github.com/briandowns/spinner"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type GitHubFile struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
 	Path string `json:"path"`
+}
+
+func countEntriesInDB(path string) (int, error) {
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM gifts").Scan(&count)
+	return count, err
 }
 
 func UpdateAllDatabasesFromGitHub() error {
@@ -58,60 +72,98 @@ func UpdateAllDatabasesFromGitHub() error {
 	}
 
 	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = " Updating gift databases..."
+	s.Suffix = " Checking gift databases..."
 	s.Start()
+	defer s.Stop()
+
+	sem := make(chan struct{}, 4)
+	results := make(chan string, len(dbFiles))
 
 	for i, file := range dbFiles {
-		s.Suffix = fmt.Sprintf(" [%d/%d] %s", i+1, len(dbFiles), file.Name)
+		sem <- struct{}{}
+		go func(i int, file GitHubFile) {
+			defer func() { <-sem }()
 
-		remoteURL := rawPrefix + file.Path
-		localPath := filepath.Join(localDir, file.Name)
+			s.Suffix = fmt.Sprintf(" [%d/%d] %s", i+1, len(dbFiles), file.Name)
+			localPath := filepath.Join(localDir, file.Name)
 
-		fileResp, err := http.Get(remoteURL)
-		if err != nil {
-			s.Stop()
-			fmt.Printf("❌ Failed to download %s: %v\n", file.Name, err)
-			s.Start()
-			continue
-		}
-		defer fileResp.Body.Close()
+			localCount, err := countEntriesInDB(localPath)
+			if err != nil {
+				localCount = 0
+			}
 
-		if fileResp.StatusCode != 200 {
-			s.Stop()
-			fmt.Printf("⚠️  Skipping %s (status %d)\n", file.Name, fileResp.StatusCode)
-			s.Start()
-			continue
-		}
+			tmpFile, err := os.CreateTemp("", "tmpdb-*.db")
+			if err != nil {
+				results <- fmt.Sprintf("⚠️ Failed to create temp file for %s: %v", file.Name, err)
+				return
+			}
+			tmpPath := tmpFile.Name()
+			tmpFile.Close()
 
-		out, err := os.Create(localPath)
-		if err != nil {
-			s.Stop()
-			fmt.Printf("❌ Failed to create file %s: %v\n", localPath, err)
-			s.Start()
-			continue
-		}
+			err = downloadFile(rawPrefix+file.Path, tmpPath)
+			if err != nil {
+				os.Remove(tmpPath)
+				results <- fmt.Sprintf("❌ Failed to download remote %s: %v", file.Name, err)
+				return
+			}
 
-		_, err = io.Copy(out, fileResp.Body)
-		out.Close()
-		if err != nil {
-			s.Stop()
-			fmt.Printf("❌ Failed to save %s: %v\n", file.Name, err)
-			s.Start()
-			continue
-		}
+			remoteCount, err := countEntriesInDB(tmpPath)
+			if err != nil {
+				os.Remove(tmpPath)
+				results <- fmt.Sprintf("⚠️ Could not count remote entries in %s: %v", file.Name, err)
+				return
+			}
 
+			if localCount >= remoteCount {
+				os.Remove(tmpPath)
+				results <- fmt.Sprintf("✅ [%d/%d] %s is up to date (%d entries)", i+1, len(dbFiles), file.Name, localCount)
+				return
+			}
+
+			err = os.Rename(tmpPath, localPath)
+			if err != nil {
+				os.Remove(tmpPath)
+				results <- fmt.Sprintf("❌ Failed to update %s: %v", file.Name, err)
+				return
+			}
+
+			results <- fmt.Sprintf("⬆️ [%d/%d] %s updated (%d -> %d entries)", i+1, len(dbFiles), file.Name, localCount, remoteCount)
+		}(i, file)
+	}
+
+	for i := 0; i < len(dbFiles); i++ {
+		msg := <-results
 		s.Stop()
-		fmt.Printf("✅ [%d/%d] %s updated\n", i+1, len(dbFiles), file.Name)
+		fmt.Println(msg)
 		s.Start()
 	}
 
-	s.Stop()
-
-	fmt.Println("🎉 All database files updated successfully. Starting the program in 10 seconds.")
+	fmt.Println("🎉 All database files processed. Starting the program in 10 seconds.")
 	time.Sleep(10 * time.Second)
 	ClearScreen()
 
 	return nil
+}
+
+func downloadFile(url, localPath string) error {
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("HTTP status %d", resp.StatusCode)
+	}
+
+	out, err := os.Create(localPath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	return err
 }
 
 func ClearScreen() {
