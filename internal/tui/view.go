@@ -174,27 +174,27 @@ func (m Model) viewMainMenu() string {
 }
 
 func (m Model) viewSymbolsSelection() string {
-	header := headerStyle.Render("🔣 Select a Symbol (↑/↓ and Enter, ⌫ to go back, Ctrl+F to search):")
+	header := headerStyle.Render("🔣 Select a Symbol (↑/↓, ⌫, Ctrl+F to search):")
 	return renderSelectionList(m.cursor, m.viewOffset, m.filteredSymbols, header, m.searchActive, m.searchQuery)
 }
 
 func (m Model) viewGiftSelection() string {
 	if m.state == selectingGift {
-		header := headerStyle.Render("🎁 Select a Gift (↑/↓ and Enter, Ctrl+F to search):")
+		header := headerStyle.Render("🎁 Select a Gift (↑/↓, Ctrl+F to search):")
 		return renderSelectionList(m.cursor, m.viewOffset, m.filteredKeys, header, m.searchActive, m.searchQuery)
 	}
 
 	header := fmt.Sprintf(
 		"%s\n%s",
 		headerStyle.Render(fmt.Sprintf("🎁 %s", m.SelectedKey)),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Render("📦 Select a Model (↑/↓ and Enter, ⌫ to go back, Ctrl+F to search):"),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Render("📦 Select a Model (↑/↓, ⌫, Ctrl+F to search):"),
 	)
 
 	return renderSelectionList(m.cursor, m.viewOffset, m.filteredValues, header, m.searchActive, m.searchQuery)
 }
 
 func (m Model) viewBackdropSelection() string {
-	header := headerStyle.Render("🖼️ Select a Backdrop (↑/↓ and Enter, ⌫ to go back, Ctrl+F to search):")
+	header := headerStyle.Render("🖼️ Select a Backdrop (↑/↓, ⌫, Ctrl+F to search):")
 	return renderSelectionList(m.cursor, m.viewOffset, m.filteredBackdrops, header, m.searchActive, m.searchQuery)
 }
 

@@ -107,7 +107,7 @@ func ParseAndSaveGift(key string, wg *sync.WaitGroup, sem chan struct{}) {
 	defer wg.Done()
 
 	keySlug := SanitizeKey(key)
-	dbPath := filepath.Join("database", keySlug+".db")
+	dbPath := filepath.Join("data/database", keySlug+".db")
 
 	fmt.Printf("Starting parsing gift %q, db file: %s\n", key, dbPath)
 
@@ -167,7 +167,7 @@ func ParseAllGifts() error {
 		return err
 	}
 
-	if err := os.MkdirAll("database", 0755); err != nil {
+	if err := os.MkdirAll("data/database", 0755); err != nil {
 		return fmt.Errorf("failed to create database folder: %w", err)
 	}
 
@@ -183,6 +183,6 @@ func ParseAllGifts() error {
 	}
 
 	wg.Wait()
-	fmt.Println("All gifts parsed and saved to separate .db files in the 'database/' folder")
+	fmt.Println("All gifts parsed and saved to separate .db files in the 'data/database/' folder")
 	return nil
 }

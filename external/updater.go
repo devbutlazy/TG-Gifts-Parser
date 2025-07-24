@@ -1,46 +1,59 @@
-package updater
+package external
 
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"tg-gifts-parser/internal/parser"
+
 	_ "github.com/mattn/go-sqlite3"
-	"tg-gifts-parser/internal/parser" 
 )
 
-const workerCount = 10
+const (
+	dbFolder        = "data/database"
+	giftsJSONPath   = "data/gifts.json"
+	updateThreshold = 10000
+)
 
-func getLastParsedIndex(dbPath string) int {
+func getExistingCount(dbPath string) (int, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		return 0
+		return 0, err
 	}
 	defer db.Close()
 
-	var max int
-	row := db.QueryRow("SELECT MAX(number) FROM gifts")
-	if err := row.Scan(&max); err != nil {
-		return 0
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM gifts").Scan(&count)
+	if err != nil {
+		return 0, err
 	}
-	return max
+	return count, nil
 }
 
-func updateGift(key string, wg *sync.WaitGroup, sem chan struct{}) {
-	defer wg.Done()
-
+func updateGiftIfNeeded(key string) (int, error) {
 	keySlug := parser.SanitizeKey(key)
-	dbPath := filepath.Join("database", keySlug+".db")
-	last := getLastParsedIndex(dbPath)
+	dbPath := filepath.Join(dbFolder, keySlug+".db")
+
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		fmt.Printf("DB for %q does not exist, parsing from start\n", key)
+		parser.ParseAndSaveGift(key, nil, nil)
+		return 0, nil
+	}
+
+	existingCount, err := getExistingCount(dbPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get existing count for %q: %w", key, err)
+	}
 
 	url := fmt.Sprintf("https://t.me/nft/%s-1", keySlug)
 	doc, err := parser.FetchHTML(url, 3, 2*time.Second)
 	if err != nil {
-		fmt.Printf("Failed to fetch base URL for %q: %v\n", key, err)
-		<-sem
-		return
+		return 0, fmt.Errorf("failed to fetch first page for %q: %w", key, err)
 	}
 
 	quantityStr := parser.ExtractGiftField(doc, "Quantity")
@@ -48,62 +61,123 @@ func updateGift(key string, wg *sync.WaitGroup, sem chan struct{}) {
 		quantityStr = parser.ExtractQuantityFallback(doc)
 	}
 	quantity := parser.CleanQuantity(quantityStr)
-
-	if quantity <= last {
-		fmt.Printf("Gift %q is up-to-date (%d/%d)\n", key, last, quantity)
-		<-sem
-		return
+	if quantity == 0 {
+		return 0, fmt.Errorf("zero quantity for %q", key)
 	}
 
-	fmt.Printf("Updating gift %q from %d to %d\n", key, last+1, quantity)
+	if existingCount >= quantity {
+		return 0, nil
+	}
 
-	db, err := parser.CreateDB(dbPath)
+	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		fmt.Printf("Failed to open DB for %q: %v\n", key, err)
-		<-sem
-		return
+		return 0, fmt.Errorf("failed to open db for %q: %w", key, err)
 	}
 	defer db.Close()
 
-	for i := last + 1; i <= quantity; i++ {
-		url := fmt.Sprintf("https://t.me/nft/%s-%d", keySlug, i)
-		doc, err := parser.FetchHTML(url, 3, 2*time.Second)
+	newItemsCount := 0
+
+	for i := existingCount + 1; i <= quantity; i++ {
+		giftURL := fmt.Sprintf("https://t.me/nft/%s-%d", keySlug, i)
+		doc, err := parser.FetchHTML(giftURL, 3, 2*time.Second)
 		if err != nil {
-			fmt.Printf("Failed to fetch %s: %v\n", url, err)
+			fmt.Printf("Warning: failed to fetch %s: %v\n", giftURL, err)
 			continue
 		}
 
 		info := parser.ParseGiftInfo(doc)
 		err = parser.InsertGift(db, key, info["Model"], info["Backdrop"], info["Symbol"], i)
 		if err != nil {
-			fmt.Printf("Insert failed for %q #%d: %v\n", key, i, err)
+			fmt.Printf("Error inserting gift %q #%d: %v\n", key, i, err)
+			continue
 		}
-
-		if i%100 == 0 {
-			fmt.Printf("Updated %q up to #%d\n", key, i)
+		newItemsCount++
+		if newItemsCount%1000 == 0 {
+			fmt.Printf("Parsed %q gift item #%d\n", key, i)
 		}
 	}
 
-	fmt.Printf("Finished updating %q\n", key)
-	<-sem
+	fmt.Printf("Updated gift %q with %d new items\n", key, newItemsCount)
+	return newItemsCount, nil
 }
 
-func main() {
-	keys, err := parser.LoadGiftsJSON("data/gifts.json")
+func RunUpdater() error {
+	keys, err := parser.LoadGiftsJSON(giftsJSONPath)
 	if err != nil {
-		fmt.Printf("Failed to load gifts.json: %v\n", err)
-		return
+		return err
 	}
 
+	totalNewItems := 0
+	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, workerCount)
+	sem := make(chan struct{}, 5)
 
 	for _, key := range keys {
 		wg.Add(1)
 		sem <- struct{}{}
-		go updateGift(key, &wg, sem)
+		go func(k string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			count, err := updateGiftIfNeeded(k)
+			if err != nil {
+				fmt.Printf("Update error for %q: %v\n", k, err)
+				return
+			}
+			mu.Lock()
+			totalNewItems += count
+			mu.Unlock()
+		}(key)
+	}
+	wg.Wait()
+
+	fmt.Printf("Total new gifts added: %d\n", totalNewItems)
+
+	if totalNewItems >= updateThreshold {
+		fmt.Println("Threshold reached, committing changes to GitHub...")
+		err = gitCommitAll(totalNewItems)
+		if err != nil {
+			fmt.Printf("Git commit failed: %v\n", err)
+			return err
+		}
 	}
 
-	wg.Wait()
-	fmt.Println("All gifts updated.")
+	return nil
+}
+
+func gitCommitAll(newItems int) error {
+	cmd := exec.Command("git", "add", dbFolder)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git add failed: %w", err)
+	}
+
+	commitMsg := fmt.Sprintf("chore(data/database/*.db): updated %d gifts", newItems)
+	cmd = exec.Command("git", "commit", "-m", commitMsg)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git commit failed: %w", err)
+	}
+
+	cmd = exec.Command("git", "push")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git push failed: %w", err)
+	}
+
+	return nil
+}
+
+func ScheduleUpdater() {
+	for {
+		fmt.Println("Running updater...")
+		err := RunUpdater()
+		if err != nil {
+			fmt.Printf("Updater error: %v\n", err)
+		}
+		fmt.Println("Sleeping for 12 hours...")
+		time.Sleep(12 * time.Hour)
+	}
 }
