@@ -34,7 +34,7 @@ func countEntriesInDB(path string) (int, error) {
 	return count, err
 }
 
-func UpdateAllDatabasesFromGitHub() error {
+func UpdateDB() error {
 	const (
 		apiURL    = "https://api.github.com/repos/devbutlazy/TG-Gifts-Parser/contents/data/database"
 		rawPrefix = "https://raw.githubusercontent.com/devbutlazy/TG-Gifts-Parser/main/"

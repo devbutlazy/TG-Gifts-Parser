@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"tg-gifts-parser/external"
 	"tg-gifts-parser/internal"
 	"tg-gifts-parser/internal/tui"
 
@@ -13,8 +14,17 @@ import (
 func main() {
 	internal.ClearScreen()
 
-	if len(os.Args) > 1 && os.Args[1] == "--update" {
-		internal.UpdateAllDatabasesFromGitHub()
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--update":
+			internal.UpdateDB()
+		case "--external":
+			err := external.RunUpdater()
+			if err != nil {
+				fmt.Println("External updater error:", err)
+			}
+			return
+		}
 	}
 
 	prog := tea.NewProgram(tui.InitialModel())
