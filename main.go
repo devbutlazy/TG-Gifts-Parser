@@ -11,12 +11,11 @@ import (
 )
 
 func main() {
-	tui.ClearScreen()
+	internal.ClearScreen()
 
 	if len(os.Args) > 1 && os.Args[1] == "--update" {
 		internal.UpdateAllDatabasesFromGitHub()
 	}
-
 
 	prog := tea.NewProgram(tui.InitialModel())
 	if _, err := prog.Run(); err != nil {

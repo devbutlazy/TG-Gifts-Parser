@@ -1,11 +1,8 @@
-package tui
+package utils
 
 import (
 	"fmt"
 	"os"
-	"os/exec"
-	"regexp"
-	"runtime"
 
 	json "github.com/goccy/go-json"
 	"github.com/iancoleman/orderedmap"
@@ -53,30 +50,4 @@ func LoadBaseData(path string) ([]string, []string) {
 		os.Exit(1)
 	}
 	return parsed.Backdrops, parsed.Symbols
-}
-
-func ClearScreen() {
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/c", "cls")
-	} else {
-		cmd = exec.Command("clear")
-	}
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		fmt.Println("Failed to clear screen:", err)
-	}
-}
-
-func RemovePercent(s string) string {
-	re := regexp.MustCompile(` ?\(?\d+(\.\d+)?%\)?`)
-	return re.ReplaceAllString(s, "")
-}
-
-func SanitizeGiftName(name string) string {
-	re := regexp.MustCompile(`[^\w]`)
-	return re.ReplaceAllString(name, "")
 }

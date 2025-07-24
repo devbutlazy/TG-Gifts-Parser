@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"tg-gifts-parser/internal/tui/utils"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -198,7 +200,7 @@ func (m Model) viewBackdropSelection() string {
 
 func (m Model) viewLoading() string {
 	var comboParts []string
-	comboParts = append(comboParts, m.SelectedValue) 
+	comboParts = append(comboParts, m.SelectedValue)
 
 	if m.SelectedBackdrop != "" {
 		comboParts = append(comboParts, m.SelectedBackdrop)
@@ -251,7 +253,7 @@ func (m Model) viewResults() string {
 
 		var links []string
 		for i, entry := range m.results[start:end] {
-			url := fmt.Sprintf("https://t.me/nft/%s-%d", SanitizeGiftName(m.SelectedKey), entry)
+			url := fmt.Sprintf("https://t.me/nft/%s-%d", utils.SanitizeGiftName(m.SelectedKey), entry)
 			clickableLink := fmt.Sprintf("%d. %s", start+i+1, url)
 			links = append(links, clickableLink)
 		}

@@ -6,12 +6,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/briandowns/spinner"
-
-	"tg-gifts-parser/internal/tui"
 )
 
 type GitHubFile struct {
@@ -109,7 +109,23 @@ func UpdateAllDatabasesFromGitHub() error {
 
 	fmt.Println("🎉 All database files updated successfully. Starting the program in 10 seconds.")
 	time.Sleep(10 * time.Second)
-	tui.ClearScreen()
+	ClearScreen()
 
 	return nil
+}
+
+func ClearScreen() {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "cls")
+	} else {
+		cmd = exec.Command("clear")
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		fmt.Println("Failed to clear screen:", err)
+	}
 }

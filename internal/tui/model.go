@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"tg-gifts-parser/internal/tui/utils"
+
 	"github.com/charmbracelet/bubbles/spinner"
 )
 
@@ -41,13 +43,13 @@ type Model struct {
 }
 
 func InitialModel() Model {
-	data, keys, err := LoadData("data/gifts.json")
+	data, keys, err := utils.LoadData("data/gifts.json")
 	if err != nil {
 		fmt.Println("Error loading gifts.json:", err)
 		os.Exit(1)
 	}
 
-	backdrops, symbols := LoadBaseData("data/base.json")
+	backdrops, symbols := utils.LoadBaseData("data/base.json")
 
 	return Model{
 		data:              data,

@@ -1,15 +1,15 @@
 package tui
 
 import (
-	"database/sql"
 	"math"
 	"strings"
 	"time"
 
+	"tg-gifts-parser/internal/tui/utils"
+
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 type state int
@@ -42,7 +42,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 
 	case tea.KeyMsg:
-
 		if m.searchActive && (m.state == selectingGift || m.state == selectingModel || m.state == selectingBackdrop || m.state == selectingSymbols) {
 			switch msg.String() {
 			case "ctrl+f":
@@ -235,12 +234,12 @@ func (m *Model) handleEnter() (tea.Model, tea.Cmd) {
 				return m, tea.Batch(
 					m.spinner.Tick,
 					tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
-						giftDB := "data/database/" + SanitizeGiftName(m.SelectedKey) + ".db"
-						modelName := RemovePercent(m.SelectedValue)
-						backdropName := RemovePercent(m.SelectedBackdrop)
-						symbolName := RemovePercent(m.SelectedSymbol)
+						giftDB := "data/database/" + utils.SanitizeGiftName(m.SelectedKey) + ".db"
+						modelName := utils.RemovePercent(m.SelectedValue)
+						backdropName := utils.RemovePercent(m.SelectedBackdrop)
+						symbolName := utils.RemovePercent(m.SelectedSymbol)
 
-						entries, err := queryEntries(giftDB, modelName, backdropName, symbolName)
+						entries, err := utils.QueryEntries(giftDB, modelName, backdropName, symbolName)
 						return resultsMsg{entries, err}
 					}),
 				)
@@ -345,42 +344,4 @@ func (m *Model) resetFilteredLists() {
 	m.filteredValues = m.values
 	m.filteredBackdrops = m.backdrops
 	m.filteredSymbols = m.symbols
-}
-
-func queryEntries(dbPath, model, backdrop, symbol string) ([]int, error) {
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-
-	rows, err := db.Query("SELECT number, model, backdrop, symbol FROM gifts")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var matches []int
-	for rows.Next() {
-		var number int
-		var dbModel, dbBackdrop, dbSymbol string
-		err := rows.Scan(&number, &dbModel, &dbBackdrop, &dbSymbol)
-		if err != nil {
-			return nil, err
-		}
-
-		dbModelClean := RemovePercent(dbModel)
-		dbBackdropClean := RemovePercent(dbBackdrop)
-		dbSymbolClean := RemovePercent(dbSymbol)
-
-		modelMatch := dbModelClean == model
-		backdropMatch := backdrop == "" || dbBackdropClean == backdrop
-		symbolMatch := symbol == "" || dbSymbolClean == symbol
-
-		if modelMatch && backdropMatch && symbolMatch {
-			matches = append(matches, number)
-		}
-	}
-
-	return matches, nil
 }
