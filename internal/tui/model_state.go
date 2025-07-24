@@ -70,7 +70,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
@@ -221,7 +220,7 @@ func (m *Model) handleEnter() (tea.Model, tea.Cmd) {
 				return m, tea.Batch(
 					m.spinner.Tick,
 					tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
-						giftDB := "database/" + SanitizeGiftName(m.SelectedKey) + ".db"
+						giftDB := "data/database/" + SanitizeGiftName(m.SelectedKey) + ".db"
 						modelName := RemovePercent(m.SelectedValue)
 						backdropName := RemovePercent(m.SelectedBackdrop)
 						entries, err := queryMatchingEntries(giftDB, modelName, backdropName)

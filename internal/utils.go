@@ -22,9 +22,9 @@ type GitHubFile struct {
 
 func UpdateAllDatabasesFromGitHub() error {
 	const (
-		apiURL    = "https://api.github.com/repos/devbutlazy/TG-Gifts-Parser/contents/database"
+		apiURL    = "https://api.github.com/repos/devbutlazy/TG-Gifts-Parser/contents/data/database"
 		rawPrefix = "https://raw.githubusercontent.com/devbutlazy/TG-Gifts-Parser/main/"
-		localDir  = "database"
+		localDir  = "data/database"
 	)
 
 	resp, err := http.Get(apiURL)
