@@ -29,6 +29,13 @@ type Model struct {
 	spinner spinner.Model
 	results []int
 	error   error
+
+	// Search-related fields
+	searchActive      bool
+	searchQuery       string
+	filteredKeys      []string
+	filteredValues    []string
+	filteredBackdrops []string
 }
 
 func InitialModel() Model {
@@ -41,9 +48,12 @@ func InitialModel() Model {
 	backdrops := LoadBackdrops("data/base.json")
 
 	return Model{
-		data:      data,
-		keys:      keys,
-		backdrops: backdrops,
-		state:     mainMenu,
+		data:              data,
+		keys:              keys,
+		backdrops:         backdrops,
+		state:             mainMenu,
+		filteredKeys:      keys,
+		filteredValues:    []string{},
+		filteredBackdrops: backdrops,
 	}
 }

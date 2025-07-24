@@ -29,7 +29,7 @@ func (m Model) View() string {
 
 	centered := centerContent(m, content)
 	if showFooter {
-		footerText := "Press q to quit. Use ↑/↓ and Enter to navigate."
+		footerText := "Press q to quit. Use ↑/↓ and Enter to navigate. Ctrl+F to search."
 		if m.state == viewingResults {
 			footerText = fmt.Sprintf("Page %d/%d: Use ←/→ and ↑/↓", m.page+1, m.totalPages)
 		}
@@ -86,27 +86,45 @@ func footerView(m Model, text string) string {
 	return footerStyle.Render(fmt.Sprintf("%s%s", strings.Repeat(" ", padding), text))
 }
 
-func renderSelectionList(cursor, viewOffset int, items []string, header string) string {
-	start := viewOffset
-	end := start + viewSize
-	if end > len(items) {
-		end = len(items)
+func renderSelectionList(cursor, viewOffset int, items []string, header string, searchActive bool, searchQuery string) string {
+	var content string
+	if searchActive {
+		searchStyle := lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("205")).
+			Padding(0, 1).
+			MarginBottom(1)
+		searchLine := searchStyle.Render(fmt.Sprintf("Search: %s█", searchQuery))
+		content = searchLine + "\n\n" + header
+	} else {
+		content = header
 	}
 
-	var lines []string
-	for i := start; i < end; i++ {
-		prefix := "  "
-		line := items[i]
-		if i == cursor {
-			prefix = cursorStyle.Render(">")
-			line = highlightStyle.Render(fmt.Sprintf("%s %s", prefix, line))
-		} else {
-			line = fmt.Sprintf("  %s", selectedStyle.Render(line))
+	if len(items) == 0 {
+		content += "\n\n" + errorStyle.Render("No results")
+	} else {
+		start := viewOffset
+		end := start + viewSize
+		if end > len(items) {
+			end = len(items)
 		}
-		lines = append(lines, line)
+
+		var lines []string
+		for i := start; i < end; i++ {
+			prefix := "  "
+			line := items[i]
+			if i == cursor {
+				prefix = cursorStyle.Render(">")
+				line = highlightStyle.Render(fmt.Sprintf("%s %s", prefix, line))
+			} else {
+				line = fmt.Sprintf("  %s", selectedStyle.Render(line))
+			}
+			lines = append(lines, line)
+		}
+
+		content += "\n\n" + strings.Join(lines, "\n")
 	}
 
-	content := header + "\n\n" + strings.Join(lines, "\n")
 	return boxStyle.Render(content)
 }
 
@@ -151,22 +169,22 @@ func (m Model) viewMainMenu() string {
 
 func (m Model) viewGiftSelection() string {
 	if m.state == selectingGift {
-		header := headerStyle.Render("🎁 Select a Gift (↑/↓ and Enter):")
-		return renderSelectionList(m.cursor, m.viewOffset, m.keys, header)
+		header := headerStyle.Render("🎁 Select a Gift (↑/↓ and Enter, Ctrl+F to search):")
+		return renderSelectionList(m.cursor, m.viewOffset, m.filteredKeys, header, m.searchActive, m.searchQuery)
 	}
 
 	header := fmt.Sprintf(
 		"%s\n%s",
 		headerStyle.Render(fmt.Sprintf("🎁 %s", m.SelectedKey)),
-		lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Render("📦 Select a Model (↑/↓ and Enter, ⌫ to go back):"),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Render("📦 Select a Model (↑/↓ and Enter, ⌫ to go back, Ctrl+F to search):"),
 	)
 
-	return renderSelectionList(m.cursor, m.viewOffset, m.values, header)
+	return renderSelectionList(m.cursor, m.viewOffset, m.filteredValues, header, m.searchActive, m.searchQuery)
 }
 
 func (m Model) viewBackdropSelection() string {
-	header := headerStyle.Render("🖼️ Select a Backdrop (↑/↓ and Enter, ⌫ to go back):")
-	return renderSelectionList(m.cursor, m.viewOffset, m.backdrops, header)
+	header := headerStyle.Render("🖼️ Select a Backdrop (↑/↓ and Enter, ⌫ to go back, Ctrl+F to search):")
+	return renderSelectionList(m.cursor, m.viewOffset, m.filteredBackdrops, header, m.searchActive, m.searchQuery)
 }
 
 func (m Model) viewLoading() string {

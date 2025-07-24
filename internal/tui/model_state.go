@@ -3,6 +3,7 @@ package tui
 import (
 	"database/sql"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -36,12 +37,49 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, msg.Height
+		m.width, m.height = msg.Width, m.height
 
 	case tea.KeyMsg:
+		// Handle search input first when search is active
+		if m.searchActive && (m.state == selectingGift || m.state == selectingModel || m.state == selectingBackdrop) {
+			switch msg.String() {
+			case "ctrl+f":
+				m.searchActive = false
+				m.searchQuery = ""
+				m.resetFilteredLists()
+				return m, nil
+			case "backspace":
+				if m.searchQuery != "" {
+					m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
+					m.filterLists()
+					m.cursor, m.viewOffset = 0, 0
+				} else {
+					m.handleBackspace()
+				}
+				return m, nil
+			case "enter":
+				return m.handleEnter()
+			default:
+				// Capture all printable characters
+				if len(msg.String()) == 1 && msg.String()[0] >= 32 && msg.String()[0] <= 126 {
+					m.searchQuery += msg.String()
+					m.filterLists()
+					m.cursor, m.viewOffset = 0, 0
+					return m, nil
+				}
+			}
+		}
+
+		// Handle other key inputs
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+
+		case "ctrl+f":
+			if m.state == selectingGift || m.state == selectingModel || m.state == selectingBackdrop {
+				m.searchActive = true
+				return m, nil
+			}
 
 		case "up", "k":
 			m.moveCursorUp()
@@ -52,22 +90,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "left", "h":
 			if m.state == viewingResults && m.page > 0 {
 				m.page--
-				m.cursor = 0 // Reset cursor to top of the options
+				m.cursor = 0
 			}
 
 		case "right", "l":
 			if m.state == viewingResults && m.page < m.totalPages-1 {
 				m.page++
-				m.cursor = 0 // Reset cursor to top of the options
+				m.cursor = 0
 			}
 
 		case "enter":
 			if m.state == viewingResults {
-				if m.cursor == 0 {
+				switch m.cursor {
+				case 0:
 					m.state = mainMenu
 					m.cursor, m.viewOffset, m.page = 0, 0, 0
+					m.searchActive = false
+					m.searchQuery = ""
+					m.resetFilteredLists()
 					return m, nil
-				} else if m.cursor == 1 {
+				case 1:
 					return m, tea.Quit
 				}
 			} else {
@@ -99,6 +141,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewOffset = 0
 			m.page = 0
 			m.totalPages = int(math.Ceil(float64(len(m.results)) / float64(viewSize)))
+			m.searchActive = false
+			m.searchQuery = ""
+			m.resetFilteredLists()
 		}
 	}
 
@@ -131,11 +176,11 @@ func (m *Model) moveCursorDown() {
 	case mainMenu:
 		length = len(mainMenuItems)
 	case selectingGift:
-		length = len(m.keys)
+		length = len(m.filteredKeys)
 	case selectingModel:
-		length = len(m.values)
+		length = len(m.filteredValues)
 	case selectingBackdrop:
-		length = len(m.backdrops)
+		length = len(m.filteredBackdrops)
 	case viewingResults:
 		length = 2 // Only Try Again, Exit
 	}
@@ -163,8 +208,10 @@ func (m *Model) handleEnter() (tea.Model, tea.Cmd) {
 		switch m.cursor {
 		case 0:
 			m.state = selectingGift
+			m.filteredKeys = m.keys
 		case 1:
 			m.state = selectingBackdrop
+			m.filteredBackdrops = m.backdrops
 		case 3:
 			if m.SelectedKey != "" && m.SelectedValue != "" && m.SelectedBackdrop != "" {
 				m.state = loadingResults
@@ -184,15 +231,28 @@ func (m *Model) handleEnter() (tea.Model, tea.Cmd) {
 			}
 		}
 	case selectingGift:
-		m.SelectedKey = m.keys[m.cursor]
-		m.values = m.data[m.SelectedKey]
-		m.state = selectingModel
+		if len(m.filteredKeys) > 0 {
+			m.SelectedKey = m.filteredKeys[m.cursor]
+			m.values = m.data[m.SelectedKey]
+			m.filteredValues = m.values
+			m.state = selectingModel
+			m.searchActive = false
+			m.searchQuery = ""
+		}
 	case selectingModel:
-		m.SelectedValue = m.values[m.cursor]
-		m.state = mainMenu
+		if len(m.filteredValues) > 0 {
+			m.SelectedValue = m.filteredValues[m.cursor]
+			m.state = mainMenu
+			m.searchActive = false
+			m.searchQuery = ""
+		}
 	case selectingBackdrop:
-		m.SelectedBackdrop = m.backdrops[m.cursor]
-		m.state = mainMenu
+		if len(m.filteredBackdrops) > 0 {
+			m.SelectedBackdrop = m.filteredBackdrops[m.cursor]
+			m.state = mainMenu
+			m.searchActive = false
+			m.searchQuery = ""
+		}
 	}
 
 	m.cursor, m.viewOffset = 0, 0
@@ -203,10 +263,52 @@ func (m *Model) handleBackspace() {
 	switch m.state {
 	case selectingModel:
 		m.state = selectingGift
+		m.filteredKeys = m.keys
 	case selectingBackdrop, selectingGift:
 		m.state = mainMenu
+		m.filteredBackdrops = m.backdrops
 	}
 	m.cursor, m.viewOffset = 0, 0
+	m.searchActive = false
+	m.searchQuery = ""
+}
+
+func (m *Model) filterLists() {
+	if m.searchQuery == "" {
+		m.resetFilteredLists()
+		return
+	}
+
+	query := strings.ToLower(m.searchQuery)
+	switch m.state {
+	case selectingGift:
+		m.filteredKeys = nil
+		for _, key := range m.keys {
+			if strings.Contains(strings.ToLower(key), query) {
+				m.filteredKeys = append(m.filteredKeys, key)
+			}
+		}
+	case selectingModel:
+		m.filteredValues = nil
+		for _, value := range m.values {
+			if strings.Contains(strings.ToLower(value), query) {
+				m.filteredValues = append(m.filteredValues, value)
+			}
+		}
+	case selectingBackdrop:
+		m.filteredBackdrops = nil
+		for _, backdrop := range m.backdrops {
+			if strings.Contains(strings.ToLower(backdrop), query) {
+				m.filteredBackdrops = append(m.filteredBackdrops, backdrop)
+			}
+		}
+	}
+}
+
+func (m *Model) resetFilteredLists() {
+	m.filteredKeys = m.keys
+	m.filteredValues = m.values
+	m.filteredBackdrops = m.backdrops
 }
 
 func queryMatchingEntries(dbPath, model, backdrop string) ([]int, error) {
