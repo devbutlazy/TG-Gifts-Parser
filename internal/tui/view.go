@@ -18,6 +18,8 @@ func (m Model) View() string {
 		content = m.viewGiftSelection()
 	case selectingBackdrop:
 		content = m.viewBackdropSelection()
+	case selectingSymbols:
+		content = m.viewSymbolsSelection()
 	case loadingResults:
 		content = m.viewLoading()
 		showFooter = false
@@ -138,8 +140,6 @@ func (m Model) viewMainMenu() string {
 		case m.cursor:
 			cursor = cursorStyle.Render(">")
 			line = highlightStyle.Render(fmt.Sprintf("%s %s", cursor, item))
-		case 2:
-			line = disabledStyle.Render(fmt.Sprintf("  %s", item)) // grayed out
 		default:
 			line = fmt.Sprintf("  %s", item)
 		}
@@ -153,8 +153,12 @@ func (m Model) viewMainMenu() string {
 			if m.SelectedBackdrop != "" {
 				line += selectedStyle.Render(fmt.Sprintf("  ✅ %s", m.SelectedBackdrop))
 			}
+		case 2:
+			if m.SelectedSymbol != "" {
+				line += selectedStyle.Render(fmt.Sprintf("  ✅ %s", m.SelectedSymbol))
+			}
 		case 3:
-			if !(m.SelectedKey != "" && m.SelectedValue != "" && m.SelectedBackdrop != "") {
+			if !(m.SelectedKey != "" && m.SelectedValue != "" && (m.SelectedBackdrop != "" || m.SelectedSymbol != "")) {
 				line = disabledStyle.Render(line)
 			}
 		}
@@ -165,6 +169,11 @@ func (m Model) viewMainMenu() string {
 	header := headerStyle.Render("🧭 Main Menu (↑/↓ + Enter):")
 	content := header + "\n\n" + strings.Join(items, "\n")
 	return boxStyle.Render(content)
+}
+
+func (m Model) viewSymbolsSelection() string {
+	header := headerStyle.Render("🔣 Select a Symbol (↑/↓ and Enter, ⌫ to go back, Ctrl+F to search):")
+	return renderSelectionList(m.cursor, m.viewOffset, m.filteredSymbols, header, m.searchActive, m.searchQuery)
 }
 
 func (m Model) viewGiftSelection() string {
@@ -188,7 +197,20 @@ func (m Model) viewBackdropSelection() string {
 }
 
 func (m Model) viewLoading() string {
-	header := headerStyle.Render(fmt.Sprintf("🔍 Searching for: %s → %s + %s", m.SelectedKey, m.SelectedValue, m.SelectedBackdrop))
+	var comboParts []string
+	comboParts = append(comboParts, m.SelectedValue) 
+
+	if m.SelectedBackdrop != "" {
+		comboParts = append(comboParts, m.SelectedBackdrop)
+	}
+
+	if m.SelectedSymbol != "" {
+		comboParts = append(comboParts, m.SelectedSymbol)
+	}
+
+	comboStr := strings.Join(comboParts, " + ")
+
+	header := headerStyle.Render(fmt.Sprintf("🔍 Searching for: %s → %s", m.SelectedKey, comboStr))
 	content := fmt.Sprintf("%s\n\n%s Loading...", header, m.spinner.View())
 	newBoxStyle := boxStyle
 	newBoxStyle = newBoxStyle.BorderForeground(lipgloss.Color("205"))
@@ -196,13 +218,30 @@ func (m Model) viewLoading() string {
 }
 
 func (m Model) viewResults() string {
-	header := headerStyle.Render(fmt.Sprintf("🎉 Results for: %s → %s + %s (Page %d/%d)", m.SelectedKey, m.SelectedValue, m.SelectedBackdrop, m.page+1, m.totalPages))
+	var comboParts []string
+	comboParts = append(comboParts, m.SelectedValue)
+
+	if m.SelectedBackdrop != "" {
+		comboParts = append(comboParts, m.SelectedBackdrop)
+	}
+
+	if m.SelectedSymbol != "" {
+		comboParts = append(comboParts, m.SelectedSymbol)
+	}
+
+	comboStr := strings.Join(comboParts, " + ")
+
+	header := headerStyle.Render(fmt.Sprintf(
+		"🎉 Results for: %s → %s (Page %d/%d)",
+		m.SelectedKey, comboStr, m.page+1, m.totalPages,
+	))
+
 	var content string
 
 	if m.error != nil {
 		content = errorStyle.Render(fmt.Sprintf("Error: %v", m.error))
 	} else if len(m.results) == 0 {
-		content = errorStyle.Render(fmt.Sprintf("No matches found for: %s + %s", m.SelectedValue, m.SelectedBackdrop))
+		content = errorStyle.Render(fmt.Sprintf("No matches found for: %s", comboStr))
 	} else {
 		start := m.page * viewSize
 		end := start + viewSize

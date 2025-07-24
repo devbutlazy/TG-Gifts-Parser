@@ -12,6 +12,7 @@ type Model struct {
 	keys      []string
 	values    []string
 	backdrops []string
+	symbols   []string
 
 	cursor     int
 	viewOffset int
@@ -22,6 +23,7 @@ type Model struct {
 	SelectedKey      string
 	SelectedValue    string
 	SelectedBackdrop string
+	SelectedSymbol   string
 
 	width  int
 	height int
@@ -30,12 +32,12 @@ type Model struct {
 	results []int
 	error   error
 
-	// Search-related fields
 	searchActive      bool
 	searchQuery       string
 	filteredKeys      []string
 	filteredValues    []string
 	filteredBackdrops []string
+	filteredSymbols   []string
 }
 
 func InitialModel() Model {
@@ -45,15 +47,17 @@ func InitialModel() Model {
 		os.Exit(1)
 	}
 
-	backdrops := LoadBackdrops("data/base.json")
+	backdrops, symbols := LoadBaseData("data/base.json")
 
 	return Model{
 		data:              data,
 		keys:              keys,
 		backdrops:         backdrops,
+		symbols:           symbols,
 		state:             mainMenu,
 		filteredKeys:      keys,
 		filteredValues:    []string{},
 		filteredBackdrops: backdrops,
+		filteredSymbols:   symbols,
 	}
 }

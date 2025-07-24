@@ -19,12 +19,14 @@ const (
 	selectingGift
 	selectingModel
 	selectingBackdrop
+	selectingSymbols
 	loadingResults
 	viewingResults
 	viewSize = 10
 )
 
 type loadingMsg struct{}
+
 type resultsMsg struct {
 	entries []int
 	err     error
@@ -41,7 +43,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 
-		if m.searchActive && (m.state == selectingGift || m.state == selectingModel || m.state == selectingBackdrop) {
+		if m.searchActive && (m.state == selectingGift || m.state == selectingModel || m.state == selectingBackdrop || m.state == selectingSymbols) {
 			switch msg.String() {
 			case "ctrl+f":
 				m.searchActive = false
@@ -60,7 +62,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				return m.handleEnter()
 			default:
-
 				if len(msg.String()) == 1 && msg.String()[0] >= 32 && msg.String()[0] <= 126 {
 					m.searchQuery += msg.String()
 					m.filterLists()
@@ -75,7 +76,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "ctrl+f":
-			if m.state == selectingGift || m.state == selectingModel || m.state == selectingBackdrop {
+			if m.state == selectingGift || m.state == selectingModel || m.state == selectingBackdrop || m.state == selectingSymbols {
 				m.searchActive = true
 				return m, nil
 			}
@@ -154,8 +155,14 @@ func (m *Model) moveCursorUp() {
 		switch m.cursor {
 		case 1:
 			m.cursor = 0
+		case 2:
+			m.cursor = 1
 		case 3:
-			m.cursor = 1 // skip <<symbols>>
+			if m.SelectedKey != "" && m.SelectedValue != "" && (m.SelectedBackdrop != "" || m.SelectedSymbol != "") {
+				m.cursor = 2
+			} else {
+				m.cursor = 1
+			}
 		}
 	} else if m.state == viewingResults {
 		if m.cursor > 0 {
@@ -180,6 +187,8 @@ func (m *Model) moveCursorDown() {
 		length = len(m.filteredValues)
 	case selectingBackdrop:
 		length = len(m.filteredBackdrops)
+	case selectingSymbols:
+		length = len(m.filteredSymbols)
 	case viewingResults:
 		length = 2 // Only Try Again, Exit
 	}
@@ -189,8 +198,10 @@ func (m *Model) moveCursorDown() {
 		case 0:
 			m.cursor = 1
 		case 1:
-			if m.SelectedKey != "" && m.SelectedValue != "" && m.SelectedBackdrop != "" {
-				m.cursor = 3 // skip Symbols → Start
+			m.cursor = 2
+		case 2:
+			if m.SelectedKey != "" && m.SelectedValue != "" && (m.SelectedBackdrop != "" || m.SelectedSymbol != "") {
+				m.cursor = 3
 			}
 		}
 	} else if m.cursor < length-1 {
@@ -211,19 +222,25 @@ func (m *Model) handleEnter() (tea.Model, tea.Cmd) {
 		case 1:
 			m.state = selectingBackdrop
 			m.filteredBackdrops = m.backdrops
+		case 2:
+			m.state = selectingSymbols
+			m.filteredSymbols = m.symbols
 		case 3:
-			if m.SelectedKey != "" && m.SelectedValue != "" && m.SelectedBackdrop != "" {
+			if m.SelectedKey != "" && m.SelectedValue != "" && (m.SelectedBackdrop != "" || m.SelectedSymbol != "") {
 				m.state = loadingResults
 				m.spinner = spinner.New()
 				m.spinner.Spinner = spinner.Dot
 				m.spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
 				return m, tea.Batch(
 					m.spinner.Tick,
 					tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
 						giftDB := "data/database/" + SanitizeGiftName(m.SelectedKey) + ".db"
 						modelName := RemovePercent(m.SelectedValue)
 						backdropName := RemovePercent(m.SelectedBackdrop)
-						entries, err := queryMatchingEntries(giftDB, modelName, backdropName)
+						symbolName := RemovePercent(m.SelectedSymbol)
+
+						entries, err := queryEntries(giftDB, modelName, backdropName, symbolName)
 						return resultsMsg{entries, err}
 					}),
 				)
@@ -252,6 +269,13 @@ func (m *Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.searchActive = false
 			m.searchQuery = ""
 		}
+	case selectingSymbols:
+		if len(m.filteredSymbols) > 0 {
+			m.SelectedSymbol = m.filteredSymbols[m.cursor]
+			m.state = mainMenu
+			m.searchActive = false
+			m.searchQuery = ""
+		}
 	}
 
 	m.cursor, m.viewOffset = 0, 0
@@ -263,9 +287,14 @@ func (m *Model) handleBackspace() {
 	case selectingModel:
 		m.state = selectingGift
 		m.filteredKeys = m.keys
-	case selectingBackdrop, selectingGift:
+	case selectingBackdrop:
 		m.state = mainMenu
 		m.filteredBackdrops = m.backdrops
+	case selectingSymbols:
+		m.state = mainMenu
+		m.filteredSymbols = m.symbols
+	case selectingGift:
+		m.state = mainMenu
 	}
 	m.cursor, m.viewOffset = 0, 0
 	m.searchActive = false
@@ -301,6 +330,13 @@ func (m *Model) filterLists() {
 				m.filteredBackdrops = append(m.filteredBackdrops, backdrop)
 			}
 		}
+	case selectingSymbols:
+		m.filteredSymbols = nil
+		for _, symbol := range m.symbols {
+			if strings.Contains(strings.ToLower(symbol), query) {
+				m.filteredSymbols = append(m.filteredSymbols, symbol)
+			}
+		}
 	}
 }
 
@@ -308,16 +344,17 @@ func (m *Model) resetFilteredLists() {
 	m.filteredKeys = m.keys
 	m.filteredValues = m.values
 	m.filteredBackdrops = m.backdrops
+	m.filteredSymbols = m.symbols
 }
 
-func queryMatchingEntries(dbPath, model, backdrop string) ([]int, error) {
+func queryEntries(dbPath, model, backdrop, symbol string) ([]int, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
 
-	rows, err := db.Query("SELECT number, model, backdrop FROM gifts")
+	rows, err := db.Query("SELECT number, model, backdrop, symbol FROM gifts")
 	if err != nil {
 		return nil, err
 	}
@@ -326,13 +363,21 @@ func queryMatchingEntries(dbPath, model, backdrop string) ([]int, error) {
 	var matches []int
 	for rows.Next() {
 		var number int
-		var dbModel, dbBackdrop string
-		err := rows.Scan(&number, &dbModel, &dbBackdrop)
+		var dbModel, dbBackdrop, dbSymbol string
+		err := rows.Scan(&number, &dbModel, &dbBackdrop, &dbSymbol)
 		if err != nil {
 			return nil, err
 		}
 
-		if RemovePercent(dbModel) == model && RemovePercent(dbBackdrop) == backdrop {
+		dbModelClean := RemovePercent(dbModel)
+		dbBackdropClean := RemovePercent(dbBackdrop)
+		dbSymbolClean := RemovePercent(dbSymbol)
+
+		modelMatch := dbModelClean == model
+		backdropMatch := backdrop == "" || dbBackdropClean == backdrop
+		symbolMatch := symbol == "" || dbSymbolClean == symbol
+
+		if modelMatch && backdropMatch && symbolMatch {
 			matches = append(matches, number)
 		}
 	}

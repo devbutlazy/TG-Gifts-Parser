@@ -31,5 +31,5 @@ var (
 			Foreground(lipgloss.Color("#FF5F5F")).
 			Bold(true)
 
-	mainMenuItems = []string{"🎁 Gift", "🖼️ Backdrop", "🔣 Symbols (soon)", "🚀 Start"}
+	mainMenuItems = []string{"🎁 Gift", "🖼️ Backdrop", "🔣 Symbols", "🚀 Start"}
 )

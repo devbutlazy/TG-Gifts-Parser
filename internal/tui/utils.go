@@ -38,7 +38,7 @@ func LoadData(path string) (map[string][]string, []string, error) {
 	return data, keys, nil
 }
 
-func LoadBackdrops(path string) []string {
+func LoadBaseData(path string) ([]string, []string) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Println("Error loading base.json:", err)
@@ -46,12 +46,13 @@ func LoadBackdrops(path string) []string {
 	}
 	var parsed struct {
 		Backdrops []string `json:"backdrops"`
+		Symbols   []string `json:"symbols"`
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		fmt.Println("Failed to parse base.json:", err)
 		os.Exit(1)
 	}
-	return parsed.Backdrops
+	return parsed.Backdrops, parsed.Symbols
 }
 
 func ClearScreen() {
