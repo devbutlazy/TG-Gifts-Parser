@@ -30,7 +30,7 @@ go run ./main.go --update
 ```
 
 ## TODO
-- [ ] External soft to auto-commit each 10k DB updates.
+- [x] External soft to auto-commit each 10k DB updates.
 - [ ] Move db to paquete to save storage and speed up the soft.
 - [ ] Add icons to gifts/symbols/backgrounds directly in terminal.
 - [ ] Implement a serverless web-version of this soft using Github Pages.
