@@ -1,5 +1,5 @@
 <h1 align="center"/>TeleGlass [WIP]</h1>
-<p align="center"><i>A serverless CLI tool to easily get specific Telegram NFT combinations. </i></p>
+<p align="center"><i>A serverless TUI to easily get specific Telegram NFT combinations. </i></p>
 
 <div align="center">
 <p>
