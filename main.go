@@ -19,10 +19,7 @@ func main() {
 		case "--update":
 			internal.UpdateDB()
 		case "--external":
-			err := external.RunUpdater()
-			if err != nil {
-				fmt.Println("External updater error:", err)
-			}
+			external.ScheduleUpdater() 
 			return
 		}
 	}
