@@ -5,21 +5,21 @@ import (
 	"os"
 
 	"tg-gifts-parser/external"
-	"tg-gifts-parser/internal"
+	"tg-gifts-parser/internal/misc"
 	"tg-gifts-parser/internal/tui"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 func main() {
-	internal.ClearScreen()
+	misc.ClearScreen()
 
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--update":
-			internal.UpdateDB()
+			misc.UpdateDB()
 		case "--external":
-			external.ScheduleUpdater() 
+			external.ScheduleUpdater()
 			return
 		}
 	}
