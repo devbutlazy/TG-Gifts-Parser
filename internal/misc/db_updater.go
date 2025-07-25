@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -89,22 +90,23 @@ func UpdateDB() error {
 	var mu sync.Mutex
 	results := make([]string, 0, len(remoteHashes))
 
-	for i, fName := range sortedKeys(remoteHashes) {
+	keys := sortedKeys(remoteHashes)
+
+	for i, name := range keys {
 		wg.Add(1)
 		sem <- struct{}{}
 
-		go func(idx int, name string) {
+		go func(idx int, fname string) {
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			s.Suffix = fmt.Sprintf(" [%d/%d] %s", idx+1, len(remoteHashes), name)
-			localHash := localHashes[name]
-			remoteHash := remoteHashes[name]
-			localPath := filepath.Join(localDir, name)
+			localHash := localHashes[fname]
+			remoteHash := remoteHashes[fname]
+			localPath := filepath.Join(localDir, fname)
 
 			if localHash == remoteHash {
 				mu.Lock()
-				results = append(results, fmt.Sprintf("✅ [%d/%d] %s is up to date", idx+1, len(remoteHashes), name))
+				results = append(results, fmt.Sprintf("✅ [%d/%d] %s is up to date", idx+1, len(keys), fname))
 				mu.Unlock()
 				return
 			}
@@ -112,17 +114,17 @@ func UpdateDB() error {
 			tmpFile, err := os.CreateTemp("", "tmpdb-*.db")
 			if err != nil {
 				mu.Lock()
-				results = append(results, fmt.Sprintf("⚠️ failed to create temp file for %s: %v", name, err))
+				results = append(results, fmt.Sprintf("⚠️ failed to create temp file for %s: %v", fname, err))
 				mu.Unlock()
 				return
 			}
 			tmpPath := tmpFile.Name()
 			tmpFile.Close()
 
-			if err := downloadFile(rawPrefix+name, tmpPath); err != nil {
+			if err := downloadFile(rawPrefix+fname, tmpPath); err != nil {
 				os.Remove(tmpPath)
 				mu.Lock()
-				results = append(results, fmt.Sprintf("❌ failed to download %s: %v", name, err))
+				results = append(results, fmt.Sprintf("❌ failed to download %s: %v", fname, err))
 				mu.Unlock()
 				return
 			}
@@ -130,17 +132,32 @@ func UpdateDB() error {
 			if err := os.Rename(tmpPath, localPath); err != nil {
 				os.Remove(tmpPath)
 				mu.Lock()
-				results = append(results, fmt.Sprintf("❌ failed to update %s: %v", name, err))
+				results = append(results, fmt.Sprintf("❌ failed to update %s: %v", fname, err))
 				mu.Unlock()
 				return
 			}
 
 			mu.Lock()
-			localHashes[name] = remoteHash
-			results = append(results, fmt.Sprintf("⬆️ [%d/%d] %s updated", idx+1, len(remoteHashes), name))
+			localHashes[fname] = remoteHash
+			results = append(results, fmt.Sprintf("⬆️ [%d/%d] %s updated", idx+1, len(keys), fname))
 			mu.Unlock()
-		}(i, fName)
+		}(i, name)
 	}
+
+	go func() {
+		ticker := time.NewTicker(200 * time.Millisecond)
+		defer ticker.Stop()
+		for range ticker.C {
+			mu.Lock()
+			updated := len(results)
+			total := len(keys)
+			s.Suffix = fmt.Sprintf(" Updating databases... [%d/%d]", updated, total)
+			mu.Unlock()
+			if updated == total {
+				break
+			}
+		}
+	}()
 
 	wg.Wait()
 	s.Stop()
@@ -149,6 +166,7 @@ func UpdateDB() error {
 		fmt.Println(msg)
 	}
 
+	ClearScreen()
 	return saveLocalHashes(localHashesPath, localHashes)
 }
 
@@ -157,5 +175,6 @@ func sortedKeys(m map[string]string) []string {
 	for k := range m {
 		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 	return keys
 }
