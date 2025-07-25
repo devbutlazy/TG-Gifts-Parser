@@ -101,10 +101,10 @@ func updateGiftIfNeeded(key string) (int, error) {
 	return newItemsCount, nil
 }
 
-func RunUpdater() error {
+func RunUpdater() (int, error) {
 	keys, err := parser.LoadGiftsJSON(giftsJSONPath)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	totalNewItems := 0
@@ -130,18 +130,8 @@ func RunUpdater() error {
 	}
 	wg.Wait()
 
-	fmt.Printf("Total new gifts added: %d\n", totalNewItems)
-
-	if totalNewItems >= updateThreshold {
-		fmt.Println("Threshold reached, committing changes to GitHub...")
-		err = gitCommitAll(totalNewItems)
-		if err != nil {
-			fmt.Printf("Git commit failed: %v\n", err)
-			return err
-		}
-	}
-
-	return nil
+	fmt.Printf("Total new gifts added this run: %d\n", totalNewItems)
+	return totalNewItems, nil
 }
 
 func gitCommitAll(newItems int) error {
@@ -171,12 +161,26 @@ func gitCommitAll(newItems int) error {
 }
 
 func ScheduleUpdater() {
+	totalSinceLastCommit := 0
+
 	for {
 		fmt.Println("Running updater...")
-		err := RunUpdater()
+		newItems, err := RunUpdater()
 		if err != nil {
 			fmt.Printf("Updater error: %v\n", err)
+		} else {
+			totalSinceLastCommit += newItems
+			if totalSinceLastCommit >= updateThreshold {
+				fmt.Println("Threshold reached, committing changes to GitHub...")
+				err := gitCommitAll(totalSinceLastCommit)
+				if err != nil {
+					fmt.Printf("Git commit failed: %v\n", err)
+				} else {
+					totalSinceLastCommit = 0
+				}
+			}
 		}
+
 		fmt.Println("Sleeping for 12 hours...")
 		time.Sleep(12 * time.Hour)
 	}
