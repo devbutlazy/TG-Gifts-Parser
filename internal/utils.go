@@ -9,19 +9,33 @@ import (
 
 func UpdateAll() {
 	fmt.Println("Stashing changes (if any)...")
-	exec.Command("git", "stash", "--include-untracked").Run()
+	stashCmd := exec.Command("git", "stash", "--include-untracked")
+	if err := stashCmd.Run(); err != nil {
+		fmt.Println("Failed to stash changes:", err)
+		return
+	}
 
 	fmt.Println("Pulling latest changes with rebase...")
-	cmd := exec.Command("git", "pull", "--rebase")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	pullCmd := exec.Command("git", "pull", "--rebase")
+	pullCmd.Stdout = os.Stdout
+	pullCmd.Stderr = os.Stderr
+	if err := pullCmd.Run(); err != nil {
 		fmt.Println("git pull --rebase failed:", err)
+		fmt.Println("You can resolve the conflict manually and then run 'git rebase --continue'")
 		return
 	}
 
 	fmt.Println("Applying stashed changes...")
-	exec.Command("git", "stash", "pop").Run()
+	popCmd := exec.Command("git", "stash", "pop")
+	popCmd.Stdout = os.Stdout
+	popCmd.Stderr = os.Stderr
+	if err := popCmd.Run(); err != nil {
+		fmt.Println("git stash pop failed:", err)
+		fmt.Println("There may be merge conflicts. Please resolve them manually.")
+		return
+	}
+
+	fmt.Println("Update completed successfully.")
 }
 
 func ClearScreen() {
