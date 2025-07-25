@@ -1,11 +1,8 @@
 package external
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,24 +16,9 @@ import (
 
 const (
 	dbFolder        = "data/database"
-	hashesJSONPath  = "data/hashes.json"
 	giftsJSONPath   = "data/gifts.json"
 	updateThreshold = 10000
 )
-
-func computeSHA256(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%x", h.Sum(nil)), nil
-}
 
 func getExistingCount(dbPath string) (int, error) {
 	db, err := sql.Open("sqlite3", dbPath)
@@ -152,54 +134,15 @@ func RunUpdater() (int, error) {
 	return totalNewItems, nil
 }
 
-func regenerateHashesJSON() error {
-	outFile := hashesJSONPath
-	f, err := os.Create(outFile)
-	if err != nil {
-		return fmt.Errorf("failed to create hashes.json: %w", err)
-	}
-	defer f.Close()
-
-	entries, err := os.ReadDir(dbFolder)
-	if err != nil {
-		return fmt.Errorf("failed to read db folder: %w", err)
-	}
-
-	hashes := make(map[string]string)
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".db" {
-			continue
-		}
-		fullPath := filepath.Join(dbFolder, entry.Name())
-		hash, err := computeSHA256(fullPath)
-		if err != nil {
-			fmt.Printf("Failed to hash %s: %v\n", entry.Name(), err)
-			continue
-		}
-		hashes[entry.Name()] = hash
-	}
-
-	encoder := json.NewEncoder(f)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(hashes); err != nil {
-		return fmt.Errorf("failed to encode hashes.json: %w", err)
-	}
-	return nil
-}
-
 func gitCommitAll(newItems int) error {
-	if err := regenerateHashesJSON(); err != nil {
-		return fmt.Errorf("failed to regenerate hashes.json: %w", err)
-	}
-
-	cmd := exec.Command("git", "add", dbFolder, hashesJSONPath)
+	cmd := exec.Command("git", "add", dbFolder)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("git add failed: %w", err)
 	}
 
-	commitMsg := fmt.Sprintf("chore(data/database): updated %d gifts + hashes", newItems)
+	commitMsg := fmt.Sprintf("chore(data/database/*.db): updated %d gifts", newItems)
 	cmd = exec.Command("git", "commit", "-m", commitMsg)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
