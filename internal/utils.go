@@ -25,16 +25,6 @@ func UpdateAll() {
 		return
 	}
 
-	fmt.Println("Applying stashed changes...")
-	popCmd := exec.Command("git", "stash", "pop")
-	popCmd.Stdout = os.Stdout
-	popCmd.Stderr = os.Stderr
-	if err := popCmd.Run(); err != nil {
-		fmt.Println("git stash pop failed:", err)
-		fmt.Println("There may be merge conflicts. Please resolve them manually.")
-		return
-	}
-
 	fmt.Println("Update completed successfully.")
 }
 

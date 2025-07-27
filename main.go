@@ -18,6 +18,7 @@ func main() {
 		switch os.Args[1] {
 		case "--update":
 			internal.UpdateAll()
+			internal.ClearScreen()
 		case "--external":
 			external.ScheduleUpdater()
 			return
