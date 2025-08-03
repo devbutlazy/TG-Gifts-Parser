@@ -29,13 +29,7 @@ go run ./main.go
 go run ./main.go --update
 ```
 
-## TODO
-- [x] External soft to auto-commit each 10k DB updates.
-- [ ] Move db to paquete to save storage and speed up the soft.
-- [ ] Add icons to gifts/symbols/backgrounds directly in terminal.
-- [ ] Implement a serverless web-version of this soft using Github Pages.
-
-## Contributing
+## Contribution
 Part of what makes the open source community special are the contributions. Any contributions will be **highly appreciated!**
 
 If you have any ideas or suggestions to make, feel free to [open an issue](https://github.com/devbutlazy/TeleGlass/issues) or [submit a PR](https://github.com/TeleGlass/LanSound/pulls)
