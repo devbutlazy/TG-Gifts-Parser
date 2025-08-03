@@ -1,4 +1,4 @@
-<h1 align="center"/>TeleGlass [WIP]</h1>
+<h1 align="center"/>TeleGlass</h1>
 <p align="center"><i>A serverless TUI to easily get specific Telegram NFT combinations. </i></p>
 
 <div align="center">
