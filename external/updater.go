@@ -17,8 +17,22 @@ import (
 const (
 	dbFolder        = "data/database"
 	giftsJSONPath   = "data/gifts.json"
-	updateThreshold = 10000
+	updateThreshold = 5000
 )
+
+func ensureGiftsTable(db *sql.DB) error {
+	query := `
+	CREATE TABLE IF NOT EXISTS gifts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		key TEXT,
+		model TEXT,
+		backdrop TEXT,
+		symbol TEXT,
+		index INTEGER
+	);`
+	_, err := db.Exec(query)
+	return err
+}
 
 func getExistingCount(dbPath string) (int, error) {
 	db, err := sql.Open("sqlite3", dbPath)
@@ -26,6 +40,11 @@ func getExistingCount(dbPath string) (int, error) {
 		return 0, err
 	}
 	defer db.Close()
+
+	err = ensureGiftsTable(db)
+	if err != nil {
+		return 0, err
+	}
 
 	var count int
 	err = db.QueryRow("SELECT COUNT(*) FROM gifts").Scan(&count)
@@ -43,6 +62,18 @@ func updateGiftIfNeeded(key string) (int, error) {
 		fmt.Printf("DB for %q does not exist, parsing from start\n", key)
 		parser.ParseAndSaveGift(key, nil, nil)
 		return 0, nil
+	}
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open db for %q: %w", key, err)
+	}
+	defer db.Close()
+
+	// Ensure gifts table exists
+	err = ensureGiftsTable(db)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create gifts table for %q: %w", key, err)
 	}
 
 	existingCount, err := getExistingCount(dbPath)
@@ -68,12 +99,6 @@ func updateGiftIfNeeded(key string) (int, error) {
 	if existingCount >= quantity {
 		return 0, nil
 	}
-
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return 0, fmt.Errorf("failed to open db for %q: %w", key, err)
-	}
-	defer db.Close()
 
 	newItemsCount := 0
 
@@ -181,7 +206,7 @@ func ScheduleUpdater() {
 			}
 		}
 
-		fmt.Println("Sleeping for 12 hours...")
+		fmt.Println("Sleeping for 1 hour...")
 		time.Sleep(1 * time.Hour)
 	}
 }
