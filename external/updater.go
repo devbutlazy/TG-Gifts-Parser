@@ -24,31 +24,79 @@ func ensureGiftsTable(db *sql.DB) error {
 	query := `
 	CREATE TABLE IF NOT EXISTS gifts (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		key TEXT,
+		name TEXT,
 		number INTEGER,
 		model TEXT,
 		backdrop TEXT,
 		symbol TEXT
 	);`
 	_, err := db.Exec(query)
+	if err != nil {
+		fmt.Printf("Error creating gifts table: %v\n", err)
+	}
 	return err
+}
+
+func ensureColumns(db *sql.DB) error {
+	requiredCols := map[string]string{
+		"name":     "TEXT",
+		"number":   "INTEGER",
+		"model":    "TEXT",
+		"backdrop": "TEXT",
+		"symbol":   "TEXT",
+	}
+
+	rows, err := db.Query("PRAGMA table_info(gifts)")
+	if err != nil {
+		fmt.Printf("Error querying table info: %v\n", err)
+		return err
+	}
+	defer rows.Close()
+
+	existingCols := make(map[string]bool)
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, dflt_value, pk interface{}
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt_value, &pk); err != nil {
+			fmt.Printf("Error scanning table info: %v\n", err)
+			return err
+		}
+		existingCols[name] = true
+	}
+
+	for col, colType := range requiredCols {
+		if !existingCols[col] {
+			alterStmt := fmt.Sprintf("ALTER TABLE gifts ADD COLUMN %s %s;", col, colType)
+			if _, err := db.Exec(alterStmt); err != nil {
+				fmt.Printf("Error adding column %s: %v\n", col, err)
+				return err
+			}
+			fmt.Printf("Added missing column %s to gifts table\n", col)
+		}
+	}
+	return nil
 }
 
 func getExistingCount(dbPath string) (int, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
+		fmt.Printf("Failed to open db %s: %v\n", dbPath, err)
 		return 0, err
 	}
 	defer db.Close()
 
-	err = ensureGiftsTable(db)
-	if err != nil {
+	if err := ensureGiftsTable(db); err != nil {
+		return 0, err
+	}
+	if err := ensureColumns(db); err != nil {
 		return 0, err
 	}
 
 	var count int
 	err = db.QueryRow("SELECT COUNT(*) FROM gifts").Scan(&count)
 	if err != nil {
+		fmt.Printf("Failed to count rows in db %s: %v\n", dbPath, err)
 		return 0, err
 	}
 	return count, nil
@@ -70,10 +118,11 @@ func updateGiftIfNeeded(key string) (int, error) {
 	}
 	defer db.Close()
 
-	// Ensure gifts table exists
-	err = ensureGiftsTable(db)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create gifts table for %q: %w", key, err)
+	if err := ensureGiftsTable(db); err != nil {
+		return 0, fmt.Errorf("failed to ensure gifts table for %q: %w", key, err)
+	}
+	if err := ensureColumns(db); err != nil {
+		return 0, fmt.Errorf("failed to ensure columns for %q: %w", key, err)
 	}
 
 	existingCount, err := getExistingCount(dbPath)
@@ -93,7 +142,8 @@ func updateGiftIfNeeded(key string) (int, error) {
 	}
 	quantity := parser.CleanQuantity(quantityStr)
 	if quantity == 0 {
-		return 0, fmt.Errorf("zero quantity for %q", key)
+		fmt.Printf("Zero quantity found for %q\n", key)
+		return 0, nil
 	}
 
 	if existingCount >= quantity {
@@ -101,7 +151,6 @@ func updateGiftIfNeeded(key string) (int, error) {
 	}
 
 	newItemsCount := 0
-
 	for i := existingCount + 1; i <= quantity; i++ {
 		giftURL := fmt.Sprintf("https://t.me/nft/%s-%d", keySlug, i)
 		doc, err := parser.FetchHTML(giftURL, 3, 2*time.Second)
@@ -116,6 +165,7 @@ func updateGiftIfNeeded(key string) (int, error) {
 			fmt.Printf("Error inserting gift %q #%d: %v\n", key, i, err)
 			continue
 		}
+
 		newItemsCount++
 		if newItemsCount%1000 == 0 {
 			fmt.Printf("Parsed %q gift item #%d\n", key, i)
@@ -129,13 +179,13 @@ func updateGiftIfNeeded(key string) (int, error) {
 func RunUpdater() (int, error) {
 	keys, err := parser.LoadGiftsJSON(giftsJSONPath)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to load gifts JSON: %w", err)
 	}
 
-	totalNewItems := 0
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 5)
+	totalNewItems := 0
 
 	for _, key := range keys {
 		wg.Add(1)
