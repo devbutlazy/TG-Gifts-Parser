@@ -17,7 +17,7 @@ import (
 const (
 	dbFolder        = "data/database"
 	giftsJSONPath   = "data/gifts.json"
-	updateThreshold = 5000
+	updateThreshold = 10000
 )
 
 func ensureGiftsTable(db *sql.DB) error {
@@ -256,7 +256,7 @@ func ScheduleUpdater() {
 			}
 		}
 
-		fmt.Println("Sleeping for 1 hour...")
-		time.Sleep(1 * time.Hour)
+		fmt.Println("Sleeping for 6 hours...")
+		time.Sleep(6 * time.Hour)
 	}
 }
