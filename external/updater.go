@@ -25,10 +25,10 @@ func ensureGiftsTable(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS gifts (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		key TEXT,
+		number INTEGER,
 		model TEXT,
 		backdrop TEXT,
-		symbol TEXT,
-		index INTEGER
+		symbol TEXT
 	);`
 	_, err := db.Exec(query)
 	return err
