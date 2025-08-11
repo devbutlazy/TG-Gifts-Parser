@@ -182,6 +182,6 @@ func ScheduleUpdater() {
 		}
 
 		fmt.Println("Sleeping for 12 hours...")
-		time.Sleep(12 * time.Hour)
+		time.Sleep(1 * time.Hour)
 	}
 }
