@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,18 +12,21 @@ import (
 	"unicode"
 
 	"github.com/antchfx/htmlquery"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/xitongsys/parquet-go-source/local"
+	"github.com/xitongsys/parquet-go/reader"
+	"github.com/xitongsys/parquet-go/writer"
 	"golang.org/x/net/html"
 )
 
 const workerCount = 10
 
-type GiftItem struct {
-	Name     string
-	Model    string
-	Backdrop string
-	Symbol   string
-	Number   int
+type Gift struct {
+	ID       int32  `parquet:"name=id, type=INT32"`
+	Name     string `parquet:"name=name, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Model    string `parquet:"name=model, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Backdrop string `parquet:"name=backdrop, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Symbol   string `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Number   int32  `parquet:"name=number, type=INT32"`
 }
 
 func ExtractQuantityFallback(doc *html.Node) string {
@@ -72,56 +74,86 @@ func LoadGiftsJSON(path string) ([]string, error) {
 	return keys, nil
 }
 
-func CreateDB(dbPath string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open db: %w", err)
+func ensureParquetFile(path string) error {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		fw, err := local.NewLocalFileWriter(path)
+		if err != nil {
+			return err
+		}
+		defer fw.Close()
+		pw, err := writer.NewParquetWriter(fw, new(Gift), 1)
+		if err != nil {
+			return err
+		}
+		if err := pw.WriteStop(); err != nil {
+			return err
+		}
 	}
-
-	createTableSQL := `
-	CREATE TABLE IF NOT EXISTS gifts (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT,
-		model TEXT,
-		backdrop TEXT,
-		symbol TEXT,
-		number INTEGER
-	);
-	CREATE INDEX IF NOT EXISTS idx_name_number ON gifts(name, number);
-	`
-	if _, err := db.Exec(createTableSQL); err != nil {
-		return nil, fmt.Errorf("failed to create table/index: %w", err)
-	}
-	return db, nil
+	return nil
 }
 
-func InsertGift(db *sql.DB, name, model, backdrop, symbol string, number int) error {
-	_, err := db.Exec(
-		`INSERT INTO gifts (name, model, backdrop, symbol, number) VALUES (?, ?, ?, ?, ?)`,
-		name, model, backdrop, symbol, number,
-	)
-	return err
+func readAllGifts(path string) ([]Gift, error) {
+	fr, err := local.NewLocalFileReader(path)
+	if err != nil {
+		return nil, err
+	}
+	defer fr.Close()
+
+	pr, err := reader.NewParquetReader(fr, new(Gift), 1)
+	if err != nil {
+		return nil, err
+	}
+	defer pr.ReadStop()
+
+	num := int(pr.GetNumRows())
+	if num == 0 {
+		return []Gift{}, nil
+	}
+	gifts := make([]Gift, num)
+	if err := pr.Read(&gifts); err != nil {
+		return nil, err
+	}
+	return gifts, nil
+}
+
+func writeAllGifts(path string, gifts []Gift) error {
+	fw, err := local.NewLocalFileWriter(path)
+	if err != nil {
+		return err
+	}
+	defer fw.Close()
+
+	pw, err := writer.NewParquetWriter(fw, new(Gift), 1)
+	if err != nil {
+		return err
+	}
+	for _, g := range gifts {
+		if err := pw.Write(g); err != nil {
+			return err
+		}
+	}
+	return pw.WriteStop()
 }
 
 func ParseAndSaveGift(key string, wg *sync.WaitGroup, sem chan struct{}) {
 	defer wg.Done()
 
 	keySlug := SanitizeKey(key)
-	dbPath := filepath.Join("data/database", keySlug+".db")
+	filePath := filepath.Join("data/database", keySlug+".parquet")
 
-	fmt.Printf("Starting parsing gift %q, db file: %s\n", key, dbPath)
+	fmt.Printf("Starting parsing gift %q, file: %s\n", key, filePath)
 
-	db, err := CreateDB(dbPath)
-	if err != nil {
-		fmt.Printf("Failed to create DB for %q: %v\n", key, err)
+	if err := ensureParquetFile(filePath); err != nil {
+		fmt.Printf("Failed to ensure parquet for %q: %v\n", key, err)
+		<-sem
 		return
 	}
-	defer db.Close()
 
 	url := fmt.Sprintf("https://t.me/nft/%s-1", keySlug)
 	doc, err := FetchHTML(url, 3, 2*time.Second)
 	if err != nil {
 		fmt.Printf("Failed to fetch first page for %q: %v\n", key, err)
+		<-sem
 		return
 	}
 
@@ -132,12 +164,21 @@ func ParseAndSaveGift(key string, wg *sync.WaitGroup, sem chan struct{}) {
 	quantity := CleanQuantity(quantityStr)
 	if quantity == 0 {
 		fmt.Printf("Warning: zero quantity for %q\n", key)
+		<-sem
 		return
 	}
 
 	fmt.Printf("Gift %q has quantity %d\n", key, quantity)
 
-	for i := 1; i <= quantity; i++ {
+	allGifts, err := readAllGifts(filePath)
+	if err != nil {
+		fmt.Printf("Error reading existing gifts for %q: %v\n", key, err)
+		<-sem
+		return
+	}
+	existingCount := len(allGifts)
+
+	for i := existingCount + 1; i <= quantity; i++ {
 		giftURL := fmt.Sprintf("https://t.me/nft/%s-%d", keySlug, i)
 		doc, err := FetchHTML(giftURL, 3, 2*time.Second)
 		if err != nil {
@@ -147,14 +188,23 @@ func ParseAndSaveGift(key string, wg *sync.WaitGroup, sem chan struct{}) {
 
 		info := ParseGiftInfo(doc)
 
-		err = InsertGift(db, key, info["Model"], info["Backdrop"], info["Symbol"], i)
-		if err != nil {
-			fmt.Printf("Error inserting gift %q #%d: %v\n", key, i, err)
+		newGift := Gift{
+			ID:       int32(i),
+			Name:     key,
+			Model:    info["Model"],
+			Backdrop: info["Backdrop"],
+			Symbol:   info["Symbol"],
+			Number:   int32(i),
 		}
+		allGifts = append(allGifts, newGift)
 
 		if i%1000 == 0 {
 			fmt.Printf("Parsed %q gift item #%d\n", key, i)
 		}
+	}
+
+	if err := writeAllGifts(filePath, allGifts); err != nil {
+		fmt.Printf("Error writing parquet for %q: %v\n", key, err)
 	}
 
 	fmt.Printf("Finished parsing gift %q\n", key)
@@ -183,6 +233,6 @@ func ParseAllGifts() error {
 	}
 
 	wg.Wait()
-	fmt.Println("All gifts parsed and saved to separate .db files in the 'data/database/' folder")
+	fmt.Println("All gifts parsed and saved to separate .parquet files in the 'data/database/' folder")
 	return nil
 }
