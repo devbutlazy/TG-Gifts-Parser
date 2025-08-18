@@ -1,43 +1,61 @@
 package utils
 
 import (
-	"database/sql"
+	"fmt"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/xitongsys/parquet-go-source/local"
+	"github.com/xitongsys/parquet-go/reader"
 )
 
-func QueryEntries(dbPath, model, backdrop, symbol string) ([]int, error) {
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
+type Row struct {
+	Number   int32  `parquet:"name=number, type=INT32"`
+	Model    string `parquet:"name=model, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Backdrop string `parquet:"name=backdrop, type=BYTE_ARRAY, convertedtype=UTF8"`
+	Symbol   string `parquet:"name=symbol, type=BYTE_ARRAY, convertedtype=UTF8"`
+}
 
-	rows, err := db.Query("SELECT number, model, backdrop, symbol FROM gifts")
+func QueryEntriesParquet(parquetPath, model, backdrop, symbol string) ([]int, error) {
+	fr, err := local.NewLocalFileReader(parquetPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open parquet: %w", err)
 	}
-	defer rows.Close()
+	defer fr.Close()
 
-	var matches []int
-	for rows.Next() {
-		var number int
-		var dbModel, dbBackdrop, dbSymbol string
-		err := rows.Scan(&number, &dbModel, &dbBackdrop, &dbSymbol)
-		if err != nil {
-			return nil, err
+	pr, err := reader.NewParquetReader(fr, new(Row), 4)
+	if err != nil {
+		return nil, fmt.Errorf("new parquet reader: %w", err)
+	}
+
+	defer pr.ReadStop()
+
+	numRows := int(pr.GetNumRows())
+	const batchSize = 1000
+
+	matches := make([]int, 0)
+
+	for offset := 0; offset < numRows; offset += batchSize {
+		n := batchSize
+		if offset+n > numRows {
+			n = numRows - offset
 		}
 
-		dbModelClean := RemovePercent(dbModel)
-		dbBackdropClean := RemovePercent(dbBackdrop)
-		dbSymbolClean := RemovePercent(dbSymbol)
+		rows := make([]Row, n)
+		if err := pr.Read(&rows); err != nil {
+			return nil, fmt.Errorf("read parquet rows: %w", err)
+		}
 
-		modelMatch := dbModelClean == model
-		backdropMatch := backdrop == "" || dbBackdropClean == backdrop
-		symbolMatch := symbol == "" || dbSymbolClean == symbol
+		for _, r := range rows {
+			dbModelClean := RemovePercent(r.Model)
+			dbBackdropClean := RemovePercent(r.Backdrop)
+			dbSymbolClean := RemovePercent(r.Symbol)
 
-		if modelMatch && backdropMatch && symbolMatch {
-			matches = append(matches, number)
+			modelMatch := dbModelClean == model
+			backdropMatch := backdrop == "" || dbBackdropClean == backdrop
+			symbolMatch := symbol == "" || dbSymbolClean == symbol
+
+			if modelMatch && backdropMatch && symbolMatch {
+				matches = append(matches, int(r.Number))
+			}
 		}
 	}
 

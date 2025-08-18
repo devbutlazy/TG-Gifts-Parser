@@ -234,12 +234,12 @@ func (m *Model) handleEnter() (tea.Model, tea.Cmd) {
 				return m, tea.Batch(
 					m.spinner.Tick,
 					tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
-						giftDB := "data/database/" + utils.SanitizeGiftName(m.SelectedKey) + ".db"
+						giftDB := "data/database/" + utils.SanitizeGiftName(m.SelectedKey) + ".parquet"
 						modelName := utils.RemovePercent(m.SelectedValue)
 						backdropName := utils.RemovePercent(m.SelectedBackdrop)
 						symbolName := utils.RemovePercent(m.SelectedSymbol)
 
-						entries, err := utils.QueryEntries(giftDB, modelName, backdropName, symbolName)
+						entries, err := utils.QueryEntriesParquet(giftDB, modelName, backdropName, symbolName)
 						return resultsMsg{entries, err}
 					}),
 				)
